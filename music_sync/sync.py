@@ -4,11 +4,13 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .models import SyncPlan, Track
+from .models import SyncPlan
 
 
 def make_backup(root: Path, backup_root: Path) -> Path:
-    """Create a timestamped copy of the laptop library before changing it."""
+    """Create a timestamped copy of a library before changing it."""
+    root = root.resolve()
+    backup_root.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     destination = backup_root / f"music_backup_{timestamp}"
     destination.mkdir(parents=True, exist_ok=False)
@@ -29,30 +31,23 @@ def unique_destination(destination: Path) -> Path:
         number += 1
 
 
-def merge_phone_only(
-    plan: SyncPlan,
-    laptop_root: Path,
-    backup_root: Path,
-) -> tuple[Path, list[tuple[Path, Path]]]:
+def merge_phone_only(plan: SyncPlan, laptop_root: Path, phone_root: Path, backup_root: Path):
     """Back up the laptop and copy phone-only tracks into it.
 
-    Existing laptop files are never replaced. Phone-only files keep their
-    relative path where possible; a filename collision gets a numbered name.
+    The laptop is never overwritten. Relative folders from the phone library
+    are preserved, and filename collisions receive a numbered filename.
     """
+    laptop_root = laptop_root.resolve()
+    phone_root = phone_root.resolve()
     backup = make_backup(laptop_root, backup_root)
     copied: list[tuple[Path, Path]] = []
 
     for track in plan.phone_only:
         try:
-            relative = track.path.relative_to(track.path.anchor)
+            relative = track.path.relative_to(phone_root)
         except ValueError:
             relative = Path(track.path.name)
-
-        # For a copied phone folder, preserving its absolute hierarchy would be
-        # undesirable. The scanner's root is not stored on Track, so use the
-        # source filename and avoid collisions. A later UI can offer a folder
-        # organizer; the safe default is to keep every unique file.
-        destination = unique_destination(laptop_root / track.path.name)
+        destination = unique_destination(laptop_root / relative)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(track.path, destination)
         copied.append((track.path, destination))
