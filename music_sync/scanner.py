@@ -23,11 +23,12 @@ def _first_tag(audio, *names: str) -> str:
 
 
 def _artwork_hash(audio) -> str | None:
-    """Hash embedded cover bytes when Mutagen exposes them."""
-    if not audio or not audio.tags:
+    """Hash embedded artwork for common Mutagen-supported formats."""
+    if not audio:
         return None
     images: list[bytes] = []
-    for key, value in audio.tags.items():
+
+    for key, value in (audio.tags or {}).items():
         key_text = str(key).upper()
         if key_text.startswith("APIC"):
             data = getattr(value, "data", None)
@@ -38,19 +39,17 @@ def _artwork_hash(audio) -> str | None:
                 images.extend(bytes(item) for item in value)
             except (TypeError, ValueError):
                 pass
+
+    for picture in getattr(audio, "pictures", []) or []:
+        data = getattr(picture, "data", None)
+        if data:
+            images.append(bytes(data))
+
     if not images:
         return None
     digest = hashlib.sha256()
     for image in images:
         digest.update(image)
-    return digest.hexdigest()
-
-
-def _file_hash(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
     return digest.hexdigest()
 
 
@@ -70,22 +69,21 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
         if not path.is_file() or path.suffix.lower() not in AUDIO_EXTENSIONS:
             continue
         try:
-            stat = path.stat()
             easy_audio = File(path, easy=True)
             raw_audio = File(path, easy=False)
-            track = Track(
+            duration = float(raw_audio.info.length) if raw_audio and raw_audio.info else None
+            stat = path.stat()
+            result.tracks.append(Track(
                 path=path,
                 side=side,
                 title=_first_tag(easy_audio, "title"),
                 artist=_first_tag(easy_audio, "artist", "albumartist"),
                 album=_first_tag(easy_audio, "album"),
-                duration=float(raw_audio.info.length) if raw_audio and raw_audio.info else None,
+                duration=duration,
                 size=stat.st_size,
                 modified_ns=stat.st_mtime_ns,
-                file_hash=_file_hash(path),
                 artwork_hash=_artwork_hash(raw_audio),
-            )
-            result.tracks.append(track)
+            ))
         except (OSError, ValueError, TypeError) as exc:
             result.errors.append(f"Could not read {path}: {exc}")
         except Exception as exc:
