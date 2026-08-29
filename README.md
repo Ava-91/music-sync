@@ -1,31 +1,45 @@
 # 🎵 music-sync
 
-A safe, metadata-aware music library sync tool for Windows.
+A safe, metadata-aware music library merger and synchronizer for Windows.
 
-`music-sync` is designed for the annoying situation where your laptop and phone have different versions of the same music library. Instead of blindly mirroring one folder over the other, it scans both sides, previews changes, backs up before destructive operations, and prefers the laptop copy when the same track exists in both libraries.
+`music-sync` is built for the situation where a laptop and a phone have different versions of the same music library. Copy the phone's `Music` folder to Windows, let the app compare both libraries, review the plan, and merge the phone-only tracks into the laptop master library.
 
-## Goals
+## What it does
 
-- 🔎 Scan laptop and Android/MTP music libraries
-- 🟢 Find laptop-only tracks
-- 🔵 Find phone-only tracks
-- 🟡 Detect tracks that exist on both sides
-- ⚠️ Flag possible metadata/artwork conflicts
-- 💾 Create a backup before destructive sync operations
-- 🖼️ Preserve embedded artwork and audio metadata
-- 👀 Preview changes before applying them
-- 🔄 Sync the merged library back to the phone
+- 🔎 Scans two normal Windows folders recursively
+- 🟢 Finds laptop-only and phone-only tracks
+- 🟡 Matches the same tracks using metadata, filename, duration, and conservative fuzzy matching
+- 📝 Detects metadata conflicts
+- 🖼️ Detects differences in embedded album artwork
+- 💾 Creates a timestamped laptop backup before merging
+- 🛡️ Never overwrites an existing laptop file during the merge
+- 👀 Shows a preview before changing anything
+- 📱 Leaves the final phone copy step to you, so the physical A02s storage is never touched directly
 
-## Current status
+## Your workflow
 
-🚧 Early development — the first milestone is a safe scanner and preview workflow. **No music files are modified by a scan.**
+1. On the Samsung A02s, copy `Internal storage/Music` to a normal Windows folder, for example:
+   `E:\Ava files\phone music`
+2. Run `python app.py`.
+3. Keep the laptop folder as `E:\Ava files\ava music` or choose another folder.
+4. Select the copied phone folder.
+5. Click **Scan & Preview**.
+6. Review the counts and conflicts.
+7. Click **Merge Phone-Only Songs** if everything looks right.
+8. The app backs up the laptop library and adds phone-only tracks without replacing laptop files.
+9. Copy the finished laptop `ava music` folder back to the A02s `Internal storage/Music` folder.
+
+### Conflict rule
+
+When the same track exists on both sides, the **laptop version is the preferred version**. This is intentional because the laptop library is where custom titles, artwork, and other edits are maintained.
+
+The app currently does not rewrite the phone copy directly and does not modify matched laptop files.
 
 ## Requirements
 
 - Windows 10/11
 - Python 3.11+
-- An Android phone connected over USB with **File Transfer** enabled
-- `pywin32` for Windows MTP/Explorer access
+- `mutagen`
 
 Install dependencies:
 
@@ -39,25 +53,28 @@ Run:
 python app.py
 ```
 
-## Important safety rule
+## Safety
 
-Your real music files do **not** belong in this repository. The application works with local paths at runtime and those paths are intentionally not stored in Git.
+- Scanning is read-only.
+- A backup is created before a merge.
+- Existing laptop files are never replaced by phone files.
+- Music files and personal library contents do not belong in this repository.
+- Backups are stored outside the music library in `music-sync-backups`.
 
-Always review the proposed changes before running a write/sync operation.
-
-## Planned architecture
+## Project structure
 
 ```text
 music-sync/
-├── app.py                 # Tkinter UI
+├── app.py
 ├── music_sync/
-│   ├── models.py          # Track/library/change models
-│   ├── scanner.py         # Local filesystem scanning
-│   ├── mtp.py             # Windows MTP / Explorer integration
-│   ├── matcher.py         # Track matching + conflict detection
-│   └── sync.py             # Backup + safe copy operations
-├── tests/
-└── requirements.txt
+│   ├── __init__.py
+│   ├── models.py
+│   ├── scanner.py
+│   ├── matcher.py
+│   └── sync.py
+├── requirements.txt
+├── .gitignore
+└── LICENSE
 ```
 
 ## License
