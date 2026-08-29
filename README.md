@@ -20,7 +20,7 @@ A safe, metadata-aware music library merger and synchronizer for Windows.
 
 1. On the Samsung A02s, copy `Internal storage/Music` to a normal Windows folder, for example:
    `E:\Ava files\phone music`
-2. Run `python app.py`.
+2. Run `install.bat` once to install the dependency, then use `run.bat` whenever you want to launch the app.
 3. Keep the laptop folder as `E:\Ava files\ava music` or choose another folder.
 4. Select the copied phone folder.
 5. Click **Scan & Preview**.
@@ -41,17 +41,19 @@ The app currently does not rewrite the phone copy directly and does not modify m
 - Python 3.11+
 - `mutagen`
 
-Install dependencies:
+Manual install:
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-Run:
+Manual run:
 
 ```powershell
 python app.py
 ```
+
+Or use the included `install.bat` and `run.bat` launchers.
 
 ## Safety
 
@@ -72,6 +74,10 @@ music-sync/
 │   ├── scanner.py
 │   ├── matcher.py
 │   └── sync.py
+├── tests/
+│   └── test_matcher.py
+├── install.bat
+├── run.bat
 ├── requirements.txt
 ├── .gitignore
 └── LICENSE
