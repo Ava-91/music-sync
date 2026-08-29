@@ -17,8 +17,8 @@ def track(side: str, name: str, title: str, artist: str = "Billie Eilish", album
 
 
 def test_phone_only_track_is_detected() -> None:
-    laptop = ScanResult(Path("laptop"), "laptop", [track("laptop", "one.mp3", "One")])
-    phone = ScanResult(Path("phone"), "phone", [track("phone", "one.mp3", "One"), track("phone", "two.mp3", "Two")])
+    laptop = ScanResult("laptop", Path("laptop"), [track("laptop", "one.mp3", "One")])
+    phone = ScanResult("phone", Path("phone"), [track("phone", "one.mp3", "One"), track("phone", "two.mp3", "Two")])
 
     plan = build_plan(laptop, phone)
 
@@ -27,8 +27,8 @@ def test_phone_only_track_is_detected() -> None:
 
 
 def test_laptop_wins_artwork_conflict() -> None:
-    laptop = ScanResult(Path("laptop"), "laptop", [track("laptop", "one.mp3", "One")])
-    phone = ScanResult(Path("phone"), "phone", [track("phone", "one.mp3", "One")])
+    laptop = ScanResult("laptop", Path("laptop"), [track("laptop", "one.mp3", "One")])
+    phone = ScanResult("phone", Path("phone"), [track("phone", "one.mp3", "One")])
 
     plan = build_plan(laptop, phone)
 
@@ -37,8 +37,8 @@ def test_laptop_wins_artwork_conflict() -> None:
 
 
 def test_renamed_metadata_with_same_filename_is_matched() -> None:
-    laptop = ScanResult(Path("laptop"), "laptop", [track("laptop", "one.mp3", "My Custom Title")])
-    phone = ScanResult(Path("phone"), "phone", [track("phone", "one.mp3", "Original Title")])
+    laptop = ScanResult("laptop", Path("laptop"), [track("laptop", "one.mp3", "My Custom Title")])
+    phone = ScanResult("phone", Path("phone"), [track("phone", "one.mp3", "Original Title")])
 
     plan = build_plan(laptop, phone)
 
