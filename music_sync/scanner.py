@@ -71,18 +71,19 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
             continue
         try:
             stat = path.stat()
-            audio = File(path, easy=True)
+            easy_audio = File(path, easy=True)
+            raw_audio = File(path, easy=False)
             track = Track(
                 path=path,
                 side=side,
-                title=_first_tag(audio, "title"),
-                artist=_first_tag(audio, "artist", "albumartist"),
-                album=_first_tag(audio, "album"),
-                duration=float(audio.info.length) if audio and audio.info else None,
+                title=_first_tag(easy_audio, "title"),
+                artist=_first_tag(easy_audio, "artist", "albumartist"),
+                album=_first_tag(easy_audio, "album"),
+                duration=float(raw_audio.info.length) if raw_audio and raw_audio.info else None,
                 size=stat.st_size,
                 modified_ns=stat.st_mtime_ns,
                 file_hash=_file_hash(path),
-                artwork_hash=_artwork_hash(audio),
+                artwork_hash=_artwork_hash(raw_audio),
             )
             result.tracks.append(track)
         except (OSError, ValueError, TypeError) as exc:
