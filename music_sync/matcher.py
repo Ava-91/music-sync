@@ -17,26 +17,12 @@ def track_key(track: Track) -> tuple[str, str, str]:
     return normalize(track.artist), normalize(track.title or track.path.stem), normalize(track.album)
 
 
-def similarity(a: Track, b: Track) -> float:
-    """Return a conservative 0..1 similarity score based on metadata and filename."""
-    title_a = normalize(a.title or a.path.stem)
-    title_b = normalize(b.title or b.path.stem)
-    name_a = normalize(a.path.stem)
-    name_b = normalize(b.path.stem)
-    artist_a = normalize(a.artist)
-    artist_b = normalize(b.artist)
-    album_a = normalize(a.album)
-    album_b = normalize(b.album)
+def _same_duration(a: Track, b: Track, tolerance: float = 2.0) -> bool:
+    return a.duration is not None and b.duration is not None and abs(a.duration - b.duration) <= tolerance
 
-    title_score = SequenceMatcher(None, title_a, title_b).ratio()
-    name_score = SequenceMatcher(None, name_a, name_b).ratio()
-    artist_score = SequenceMatcher(None, artist_a, artist_b).ratio() if artist_a or artist_b else 1.0
-    album_score = SequenceMatcher(None, album_a, album_b).ratio() if album_a or album_b else 1.0
-    duration_score = 1.0
-    if a.duration is not None and b.duration is not None:
-        duration_score = max(0.0, 1.0 - abs(a.duration - b.duration) / 10.0)
 
-    return 0.45 * title_score + 0.15 * name_score + 0.20 * artist_score + 0.10 * album_score + 0.10 * duration_score
+def _artwork_conflict(a: Track, b: Track) -> bool:
+    return a.artwork_hash is not None and b.artwork_hash is not None and a.artwork_hash != b.artwork_hash
 
 
 def _metadata_conflict(a: Track, b: Track) -> bool:
@@ -44,11 +30,23 @@ def _metadata_conflict(a: Track, b: Track) -> bool:
     return any(x and y and normalize(x) != normalize(y) for x, y in fields)
 
 
-def _artwork_conflict(a: Track, b: Track) -> bool:
-    return (
-        a.artwork_hash is not None
-        and b.artwork_hash is not None
-        and a.artwork_hash != b.artwork_hash
+def similarity(a: Track, b: Track) -> float:
+    """Return a 0..1 similarity score for review-only fuzzy matching."""
+    title_score = SequenceMatcher(None, normalize(a.title or a.path.stem), normalize(b.title or b.path.stem)).ratio()
+    name_score = SequenceMatcher(None, normalize(a.path.stem), normalize(b.path.stem)).ratio()
+    artist_score = SequenceMatcher(None, normalize(a.artist), normalize(b.artist)).ratio() if a.artist or b.artist else 1.0
+    album_score = SequenceMatcher(None, normalize(a.album), normalize(b.album)).ratio() if a.album or b.album else 1.0
+    duration_score = 1.0 if _same_duration(a, b) else 0.0
+    return 0.45 * title_score + 0.15 * name_score + 0.20 * artist_score + 0.10 * album_score + 0.10 * duration_score
+
+
+def _make_match(laptop: Track, phone: Track, confidence: float) -> Match:
+    return Match(
+        laptop=laptop,
+        phone=phone,
+        confidence=confidence,
+        metadata_conflict=_metadata_conflict(laptop, phone),
+        artwork_conflict=_artwork_conflict(laptop, phone),
     )
 
 
@@ -58,28 +56,41 @@ def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -
     used_phone: set[int] = set()
     matched_laptop: set[object] = set()
 
+    # 1. Exact metadata matches.
     phone_by_key: dict[tuple[str, str, str], list[tuple[int, Track]]] = {}
     for index, track in enumerate(phone.tracks):
         phone_by_key.setdefault(track_key(track), []).append((index, track))
 
     for laptop_track in laptop.tracks:
-        candidate = next(
-            ((i, t) for i, t in phone_by_key.get(track_key(laptop_track), []) if i not in used_phone),
-            None,
-        )
+        candidate = next(((i, t) for i, t in phone_by_key.get(track_key(laptop_track), []) if i not in used_phone), None)
         if candidate is None:
             continue
         index, phone_track = candidate
         used_phone.add(index)
         matched_laptop.add(laptop_track.path)
-        plan.matches.append(Match(
-            laptop=laptop_track,
-            phone=phone_track,
-            confidence=1.0,
-            metadata_conflict=_metadata_conflict(laptop_track, phone_track),
-            artwork_conflict=_artwork_conflict(laptop_track, phone_track),
-        ))
+        plan.matches.append(_make_match(laptop_track, phone_track, 1.0))
 
+    # 2. Same filename + matching duration or artist. This catches files whose
+    # metadata title was edited on one device while the filename stayed the same.
+    phone_by_name: dict[str, list[tuple[int, Track]]] = {}
+    for index, track in enumerate(phone.tracks):
+        phone_by_name.setdefault(normalize(track.path.stem), []).append((index, track))
+
+    for laptop_track in laptop.tracks:
+        if laptop_track.path in matched_laptop:
+            continue
+        candidates = [
+            (i, t) for i, t in phone_by_name.get(normalize(laptop_track.path.stem), [])
+            if i not in used_phone and (_same_duration(laptop_track, t) or normalize(laptop_track.artist) == normalize(t.artist))
+        ]
+        if len(candidates) == 1:
+            index, phone_track = candidates[0]
+            used_phone.add(index)
+            matched_laptop.add(laptop_track.path)
+            plan.matches.append(_make_match(laptop_track, phone_track, 0.98))
+
+    # 3. Conservative fuzzy matching. These are reported as matches but never
+    # overwrite a laptop file; uncertain matches can therefore be reviewed.
     remaining_phone = [(i, t) for i, t in enumerate(phone.tracks) if i not in used_phone]
     for laptop_track in laptop.tracks:
         if laptop_track.path in matched_laptop:
@@ -94,13 +105,7 @@ def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -
             used_phone.add(index)
             remaining_phone = [(i, t) for i, t in remaining_phone if i != index]
             matched_laptop.add(laptop_track.path)
-            plan.matches.append(Match(
-                laptop=laptop_track,
-                phone=phone_track,
-                confidence=score,
-                metadata_conflict=_metadata_conflict(laptop_track, phone_track),
-                artwork_conflict=_artwork_conflict(laptop_track, phone_track),
-            ))
+            plan.matches.append(_make_match(laptop_track, phone_track, score))
         else:
             plan.laptop_only.append(laptop_track)
 
