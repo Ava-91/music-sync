@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from mutagen import File
@@ -21,6 +22,38 @@ def _first_tag(audio, *names: str) -> str:
     return ""
 
 
+def _artwork_hash(audio) -> str | None:
+    """Hash embedded cover bytes when Mutagen exposes them."""
+    if not audio or not audio.tags:
+        return None
+    images: list[bytes] = []
+    for key, value in audio.tags.items():
+        key_text = str(key).upper()
+        if key_text.startswith("APIC"):
+            data = getattr(value, "data", None)
+            if data:
+                images.append(bytes(data))
+        elif key_text == "COVR":
+            try:
+                images.extend(bytes(item) for item in value)
+            except (TypeError, ValueError):
+                pass
+    if not images:
+        return None
+    digest = hashlib.sha256()
+    for image in images:
+        digest.update(image)
+    return digest.hexdigest()
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def scan_library(root: str | Path, side: Side) -> ScanResult:
     """Scan an accessible directory without modifying anything."""
     root = Path(root)
@@ -33,13 +66,7 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
         result.errors.append(f"Not a directory: {root}")
         return result
 
-    try:
-        paths = root.rglob("*")
-    except OSError as exc:
-        result.errors.append(f"Could not enumerate {root}: {exc}")
-        return result
-
-    for path in paths:
+    for path in root.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in AUDIO_EXTENSIONS:
             continue
         try:
@@ -54,11 +81,13 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
                 duration=float(audio.info.length) if audio and audio.info else None,
                 size=stat.st_size,
                 modified_ns=stat.st_mtime_ns,
+                file_hash=_file_hash(path),
+                artwork_hash=_artwork_hash(audio),
             )
             result.tracks.append(track)
         except (OSError, ValueError, TypeError) as exc:
             result.errors.append(f"Could not read {path}: {exc}")
-        except Exception as exc:  # Mutagen can raise format-specific exceptions.
+        except Exception as exc:
             result.errors.append(f"Could not parse {path}: {exc}")
 
     return result
