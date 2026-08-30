@@ -40,23 +40,28 @@ def similarity(a: Track, b: Track) -> float:
     return 0.45 * title_score + 0.15 * name_score + 0.20 * artist_score + 0.10 * album_score + 0.10 * duration_score
 
 
-def _make_match(laptop: Track, phone: Track, confidence: float) -> Match:
+def _make_match(laptop: Track, phone: Track, confidence: float, confirmed: bool) -> Match:
     return Match(
         laptop=laptop,
         phone=phone,
         confidence=confidence,
         metadata_conflict=_metadata_conflict(laptop, phone),
         artwork_conflict=_artwork_conflict(laptop, phone),
+        confirmed=confirmed,
     )
 
 
 def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -> SyncPlan:
-    """Build a non-destructive merge plan. The laptop version wins conflicts."""
+    """Build a non-destructive merge plan.
+
+    Exact metadata/name matches are trusted. Fuzzy matches are deliberately
+    marked unconfirmed and must be reviewed before they can be treated as the
+    same song by the application.
+    """
     plan = SyncPlan()
     used_phone: set[int] = set()
     matched_laptop: set[object] = set()
 
-    # 1. Exact metadata matches.
     phone_by_key: dict[tuple[str, str, str], list[tuple[int, Track]]] = {}
     for index, track in enumerate(phone.tracks):
         phone_by_key.setdefault(track_key(track), []).append((index, track))
@@ -68,10 +73,8 @@ def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -
         index, phone_track = candidate
         used_phone.add(index)
         matched_laptop.add(laptop_track.path)
-        plan.matches.append(_make_match(laptop_track, phone_track, 1.0))
+        plan.matches.append(_make_match(laptop_track, phone_track, 1.0, True))
 
-    # 2. Same filename + matching duration or artist. This catches files whose
-    # metadata title was edited on one device while the filename stayed the same.
     phone_by_name: dict[str, list[tuple[int, Track]]] = {}
     for index, track in enumerate(phone.tracks):
         phone_by_name.setdefault(normalize(track.path.stem), []).append((index, track))
@@ -87,10 +90,8 @@ def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -
             index, phone_track = candidates[0]
             used_phone.add(index)
             matched_laptop.add(laptop_track.path)
-            plan.matches.append(_make_match(laptop_track, phone_track, 0.98))
+            plan.matches.append(_make_match(laptop_track, phone_track, 0.98, True))
 
-    # 3. Conservative fuzzy matching. These are reported as matches but never
-    # overwrite a laptop file; uncertain matches can therefore be reviewed.
     remaining_phone = [(i, t) for i, t in enumerate(phone.tracks) if i not in used_phone]
     for laptop_track in laptop.tracks:
         if laptop_track.path in matched_laptop:
@@ -105,7 +106,7 @@ def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -
             used_phone.add(index)
             remaining_phone = [(i, t) for i, t in remaining_phone if i != index]
             matched_laptop.add(laptop_track.path)
-            plan.matches.append(_make_match(laptop_track, phone_track, score))
+            plan.matches.append(_make_match(laptop_track, phone_track, score, False))
         else:
             plan.laptop_only.append(laptop_track)
 
