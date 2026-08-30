@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from .explain import explain_match
 from .models import Match, SyncPlan
 
 
@@ -12,7 +13,7 @@ class FuzzyReviewDialog(tk.Toplevel):
     def __init__(self, parent: tk.Misc, matches: list[Match]) -> None:
         super().__init__(parent)
         self.title("Review fuzzy matches")
-        self.geometry("820x560")
+        self.geometry("920x650")
         self.transient(parent)
         self.grab_set()
         self.matches = matches
@@ -27,13 +28,14 @@ class FuzzyReviewDialog(tk.Toplevel):
         root.pack(fill="both", expand=True)
         self.counter = ttk.Label(root, font=("Segoe UI", 12, "bold"))
         self.counter.pack(anchor="w")
-        ttk.Label(root, text="These matches are suggestions, not automatic decisions.").pack(anchor="w", pady=(4, 18))
+        self.explanation = ttk.Label(root, justify="left", wraplength=850)
+        self.explanation.pack(anchor="w", pady=(8, 14))
 
         columns = ttk.Frame(root)
         columns.pack(fill="both", expand=True)
-        self.laptop = self._panel(columns, "💻 Laptop candidate")
+        self.laptop = self._panel(columns, "Library A candidate")
         self.laptop.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        self.phone = self._panel(columns, "📱 Phone candidate")
+        self.phone = self._panel(columns, "Library B candidate")
         self.phone.pack(side="left", fill="both", expand=True, padx=(8, 0))
 
         actions = ttk.Frame(root)
@@ -50,19 +52,26 @@ class FuzzyReviewDialog(tk.Toplevel):
     def _populate(self, panel: ttk.Frame, track) -> None:
         for child in panel.winfo_children():
             child.destroy()
-        ttk.Label(panel, text=track.display_title, font=("Segoe UI", 14, "bold"), wraplength=330).pack(anchor="w")
+        ttk.Label(panel, text=track.display_title, font=("Segoe UI", 14, "bold"), wraplength=370).pack(anchor="w")
         ttk.Label(panel, text=f"Artist: {track.display_artist}").pack(anchor="w", pady=(12, 0))
         ttk.Label(panel, text=f"Album: {track.display_album}").pack(anchor="w")
         duration = f"{track.duration:.1f}s" if track.duration is not None else "Unknown"
         ttk.Label(panel, text=f"Duration: {duration}").pack(anchor="w")
-        ttk.Label(panel, text=f"Filename: {track.path.name}", wraplength=330).pack(anchor="w", pady=(0, 12))
+        ttk.Label(panel, text=f"Filename: {track.path.name}", wraplength=370).pack(anchor="w", pady=(0, 12))
+        ttk.Label(panel, text=f"SHA-256: {track.file_hash or 'Unavailable'}", wraplength=370).pack(anchor="w")
+        ttk.Label(panel, text=f"Artwork: {track.artwork_count} embedded image(s)").pack(anchor="w")
 
     def _show_current(self) -> None:
         if not self.matches:
             self.finish()
             return
         match = self.matches[self.index]
+        details = explain_match(match)
         self.counter.configure(text=f"Fuzzy match {self.index + 1} of {len(self.matches)} — confidence {match.confidence:.0%}")
+        reason_text = "Evidence: " + " • ".join(details.reasons)
+        if details.conflicts:
+            reason_text += "\nConflicts: " + " • ".join(details.conflicts)
+        self.explanation.configure(text=reason_text)
         self._populate(self.laptop, match.laptop)
         self._populate(self.phone, match.phone)
 
@@ -109,6 +118,4 @@ def apply_fuzzy_decisions(plan: SyncPlan, decisions: dict[str, bool]) -> SyncPla
             remaining_matches.append(match)
         elif decision is False:
             phone_only.append(match.phone)
-        else:
-            remaining_matches.append(match)
     return SyncPlan(laptop_only=list(plan.laptop_only), phone_only=phone_only, matches=remaining_matches)
