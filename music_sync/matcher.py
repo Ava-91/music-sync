@@ -22,7 +22,11 @@ def _same_duration(a: Track, b: Track, tolerance: float = 2.0) -> bool:
 
 
 def _artwork_conflict(a: Track, b: Track) -> bool:
-    return a.artwork_hash is not None and b.artwork_hash is not None and a.artwork_hash != b.artwork_hash
+    # Missing artwork on either side is also actionable: one library has an
+    # artwork payload while the other does not.
+    if a.artwork_hashes != b.artwork_hashes:
+        return bool(a.artwork_hashes or b.artwork_hashes)
+    return False
 
 
 def _metadata_conflict(a: Track, b: Track) -> bool:
@@ -57,8 +61,6 @@ def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -
     used_phone: set[int] = set()
     matched_laptop: set[object] = set()
 
-    # Byte-identical files are the strongest possible match and take priority
-    # over metadata, filenames, or fuzzy similarity.
     phone_by_hash: dict[str, list[tuple[int, Track]]] = {}
     for index, track in enumerate(phone.tracks):
         if track.file_hash:
