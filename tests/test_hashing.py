@@ -6,7 +6,7 @@ from music_sync.hashing import sha256_file
 def test_sha256_is_stable(tmp_path: Path):
     path = tmp_path / "track.mp3"
     path.write_bytes(b"music-sync test data")
-    assert sha256_file(path) == """e5c37d5b40e1fbd4e52f4d8c9c3cbbd9b7b7c5f7a4d3b8b4c2f2f6f6a8b5d5c8""".strip()
+    assert sha256_file(path) == "50f38c0d63db36bcffe073d2165c0f8ff57088ae564b14540b532df61b79ae3a"
 
 
 def test_different_content_has_different_hash(tmp_path: Path):
