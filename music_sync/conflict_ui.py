@@ -5,6 +5,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from .artwork import make_preview
+from .explain import explain_match
 from .models import Match
 from .review import ConflictChoice, conflict_matches
 
@@ -15,7 +16,7 @@ class ConflictReviewDialog(tk.Toplevel):
     def __init__(self, parent: tk.Misc, matches: list[Match]) -> None:
         super().__init__(parent)
         self.title("Review conflicts")
-        self.geometry("920x650")
+        self.geometry("980x720")
         self.transient(parent)
         self.grab_set()
         self.matches = conflict_matches(matches)
@@ -32,19 +33,21 @@ class ConflictReviewDialog(tk.Toplevel):
         self.counter = ttk.Label(root, font=("Segoe UI", 11, "bold"))
         self.counter.pack(anchor="w")
         self.kind = ttk.Label(root)
-        self.kind.pack(anchor="w", pady=(4, 14))
+        self.kind.pack(anchor="w", pady=(4, 6))
+        self.evidence = ttk.Label(root, justify="left", wraplength=930)
+        self.evidence.pack(anchor="w", pady=(0, 14))
 
         columns = ttk.Frame(root)
-        columns.pack(fill="x")
-        self.left = self._track_panel(columns, "💻 Laptop")
+        columns.pack(fill="both", expand=True)
+        self.left = self._track_panel(columns, "Library A")
         self.left.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        self.right = self._track_panel(columns, "📱 Phone")
+        self.right = self._track_panel(columns, "Library B")
         self.right.pack(side="left", fill="both", expand=True, padx=(8, 0))
 
         choices = ttk.LabelFrame(root, text="Resolution", padding=12)
         choices.pack(fill="x", pady=18)
         self.choice = tk.StringVar(value=ConflictChoice.LAPTOP.value)
-        for value, text in (("laptop", "Keep Laptop"), ("phone", "Keep Phone"), ("skip", "Skip")):
+        for value, text in (("laptop", "Keep Library A"), ("phone", "Keep Library B"), ("skip", "Skip")):
             ttk.Radiobutton(choices, text=text, variable=self.choice, value=value).pack(side="left", padx=10)
 
         nav = ttk.Frame(root)
@@ -55,8 +58,7 @@ class ConflictReviewDialog(tk.Toplevel):
         ttk.Button(nav, text="Cancel", command=self.cancel).pack(side="right", padx=8)
 
     def _track_panel(self, parent: ttk.Frame, title: str) -> ttk.Frame:
-        panel = ttk.LabelFrame(parent, text=title, padding=12)
-        return panel
+        return ttk.LabelFrame(parent, text=title, padding=12)
 
     def _clear_panel(self, panel: ttk.Frame) -> None:
         for child in panel.winfo_children():
@@ -67,6 +69,7 @@ class ConflictReviewDialog(tk.Toplevel):
             self.finish()
             return
         match = self.matches[self.index]
+        details = explain_match(match)
         self.counter.configure(text=f"Conflict {self.index + 1} of {len(self.matches)}")
         kinds = []
         if match.metadata_conflict:
@@ -74,18 +77,24 @@ class ConflictReviewDialog(tk.Toplevel):
         if match.artwork_conflict:
             kinds.append("artwork")
         self.kind.configure(text=" + ".join(kinds).title() + " conflict")
+        evidence = "Evidence: " + " • ".join(details.reasons)
+        if details.conflicts:
+            evidence += "\nDetected: " + " • ".join(details.conflicts)
+        self.evidence.configure(text=evidence)
         self._populate_track(self.left, match.laptop)
         self._populate_track(self.right, match.phone)
         self.choice.set(self.choices.get(str(match.laptop.path), ConflictChoice.LAPTOP).value)
 
     def _populate_track(self, panel: ttk.Frame, track) -> None:
         self._clear_panel(panel)
-        ttk.Label(panel, text=track.display_title, font=("Segoe UI", 12, "bold"), wraplength=360).pack(anchor="w")
+        ttk.Label(panel, text=track.display_title, font=("Segoe UI", 12, "bold"), wraplength=380).pack(anchor="w")
         ttk.Label(panel, text=f"Artist: {track.display_artist}").pack(anchor="w", pady=(6, 0))
         ttk.Label(panel, text=f"Album: {track.display_album}").pack(anchor="w")
         duration = f"{track.duration:.1f}s" if track.duration is not None else "Unknown"
         ttk.Label(panel, text=f"Duration: {duration}").pack(anchor="w")
-        ttk.Label(panel, text=f"File: {Path(track.path).name}", wraplength=360).pack(anchor="w", pady=(0, 8))
+        ttk.Label(panel, text=f"File: {Path(track.path).name}", wraplength=380).pack(anchor="w")
+        ttk.Label(panel, text=f"SHA-256: {track.file_hash or 'Unavailable'}", wraplength=380).pack(anchor="w")
+        ttk.Label(panel, text=f"Artwork: {track.artwork_count} embedded image(s)").pack(anchor="w", pady=(0, 8))
         preview = make_preview(Path(track.path))
         if preview:
             self._images.append(preview)
