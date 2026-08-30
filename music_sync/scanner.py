@@ -5,6 +5,7 @@ from pathlib import Path
 
 from mutagen import File
 
+from .hashing import sha256_file
 from .models import ScanResult, Side, Track
 
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".m4b", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma"}
@@ -23,11 +24,10 @@ def _first_tag(audio, *names: str) -> str:
 
 
 def _artwork_hash(audio) -> str | None:
-    """Hash embedded artwork for common Mutagen-supported formats."""
+    """Hash all embedded artwork payloads for common Mutagen-supported formats."""
     if not audio:
         return None
     images: list[bytes] = []
-
     for key, value in (audio.tags or {}).items():
         key_text = str(key).upper()
         if key_text.startswith("APIC"):
@@ -39,12 +39,10 @@ def _artwork_hash(audio) -> str | None:
                 images.extend(bytes(item) for item in value)
             except (TypeError, ValueError):
                 pass
-
     for picture in getattr(audio, "pictures", []) or []:
         data = getattr(picture, "data", None)
         if data:
             images.append(bytes(data))
-
     if not images:
         return None
     digest = hashlib.sha256()
@@ -57,7 +55,6 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
     """Scan an accessible directory without modifying anything."""
     root = Path(root)
     result = ScanResult(side=side, root=root)
-
     if not root.exists():
         result.errors.append(f"Directory does not exist: {root}")
         return result
@@ -82,6 +79,7 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
                 duration=duration,
                 size=stat.st_size,
                 modified_ns=stat.st_mtime_ns,
+                file_hash=sha256_file(path),
                 artwork_hash=_artwork_hash(raw_audio),
             ))
         except (OSError, ValueError, TypeError) as exc:
