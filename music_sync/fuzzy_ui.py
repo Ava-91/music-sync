@@ -3,7 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from .models import Match
+from .models import Match, SyncPlan
 
 
 class FuzzyReviewDialog(tk.Toplevel):
@@ -93,3 +93,22 @@ def review_fuzzy_matches(parent: tk.Misc, matches: list[Match]) -> dict[str, boo
     dialog = FuzzyReviewDialog(parent, matches)
     parent.wait_window(dialog)
     return dialog.result
+
+
+def apply_fuzzy_decisions(plan: SyncPlan, decisions: dict[str, bool]) -> SyncPlan:
+    """Convert reviewed fuzzy suggestions into confirmed matches or phone-only tracks."""
+    remaining_matches: list[Match] = []
+    phone_only = list(plan.phone_only)
+    for match in plan.matches:
+        if match.confirmed:
+            remaining_matches.append(match)
+            continue
+        decision = decisions.get(str(match.laptop.path))
+        if decision is True:
+            match.confirmed = True
+            remaining_matches.append(match)
+        elif decision is False:
+            phone_only.append(match.phone)
+        else:
+            remaining_matches.append(match)
+    return SyncPlan(laptop_only=list(plan.laptop_only), phone_only=phone_only, matches=remaining_matches)
