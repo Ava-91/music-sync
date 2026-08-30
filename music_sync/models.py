@@ -27,6 +27,14 @@ class Track:
     def display_title(self) -> str:
         return self.title or self.path.stem
 
+    @property
+    def display_artist(self) -> str:
+        return self.artist or "Unknown artist"
+
+    @property
+    def display_album(self) -> str:
+        return self.album or "Unknown album"
+
 
 @dataclass(slots=True)
 class Match:
@@ -37,6 +45,7 @@ class Match:
     confidence: float
     metadata_conflict: bool = False
     artwork_conflict: bool = False
+    confirmed: bool = True
 
 
 @dataclass(slots=True)
