@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from music_sync.conflict_ui import review_conflicts
+from music_sync.fuzzy_ui import apply_fuzzy_decisions, review_fuzzy_matches
 from music_sync.matcher import build_plan
 from music_sync.models import SyncPlan
 from music_sync.scanner import scan_library
@@ -20,8 +21,8 @@ class MusicSyncApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("🎵 Ava Music Sync")
-        self.geometry("980x700")
-        self.minsize(860, 600)
+        self.geometry("1080x740")
+        self.minsize(900, 620)
         self.laptop_var = tk.StringVar(value=DEFAULT_LAPTOP)
         self.phone_var = tk.StringVar(value=DEFAULT_PHONE_COPY)
         self.status_var = tk.StringVar(value="Select your copied phone Music folder, then scan.")
@@ -29,16 +30,18 @@ class MusicSyncApp(tk.Tk):
         self.laptop_root: Path | None = None
         self.phone_root: Path | None = None
         self.scan_button: ttk.Button | None = None
-        self.review_button: ttk.Button | None = None
+        self.review_conflicts_button: ttk.Button | None = None
+        self.review_fuzzy_button: ttk.Button | None = None
         self.merge_button: ttk.Button | None = None
         self.review_choices: dict[str, ConflictChoice] = {}
+        self.fuzzy_decisions: dict[str, bool] = {}
         self._build_ui()
 
     def _build_ui(self) -> None:
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill="both", expand=True)
         ttk.Label(frame, text="🎵 Ava Music Sync", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        ttk.Label(frame, text="Compare two libraries, review conflicts, then merge safely.").pack(anchor="w", pady=(2, 18))
+        ttk.Label(frame, text="Compare two libraries, review conflicts and uncertain matches, then merge safely.").pack(anchor="w", pady=(2, 18))
         self._path_row(frame, "💻 Laptop", self.laptop_var)
         self._path_row(frame, "📱 Phone copy", self.phone_var)
 
@@ -46,18 +49,20 @@ class MusicSyncApp(tk.Tk):
         actions.pack(fill="x", pady=16)
         self.scan_button = ttk.Button(actions, text="🔍 Scan & Preview", command=self.scan)
         self.scan_button.pack(side="left")
-        self.review_button = ttk.Button(actions, text="👀 Review Conflicts", command=self.review, state="disabled")
-        self.review_button.pack(side="left", padx=8)
+        self.review_conflicts_button = ttk.Button(actions, text="🖼️ Review Conflicts", command=self.review, state="disabled")
+        self.review_conflicts_button.pack(side="left", padx=8)
+        self.review_fuzzy_button = ttk.Button(actions, text="🧠 Review Fuzzy Matches", command=self.review_fuzzy, state="disabled")
+        self.review_fuzzy_button.pack(side="left")
         self.merge_button = ttk.Button(actions, text="🔄 Merge Safely", command=self.merge, state="disabled")
-        self.merge_button.pack(side="left")
+        self.merge_button.pack(side="left", padx=8)
 
-        self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=18)
+        self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=20)
         self.tree.heading("category", text="Category")
         self.tree.heading("count", text="Count")
         self.tree.heading("details", text="Details")
-        self.tree.column("category", width=250, anchor="w")
+        self.tree.column("category", width=270, anchor="w")
         self.tree.column("count", width=90, anchor="center")
-        self.tree.column("details", width=560, anchor="w")
+        self.tree.column("details", width=620, anchor="w")
         self.tree.pack(fill="both", expand=True)
         ttk.Label(frame, textvariable=self.status_var).pack(anchor="w", pady=(12, 0))
 
@@ -78,10 +83,14 @@ class MusicSyncApp(tk.Tk):
         if self.scan_button:
             self.scan_button.configure(state=state)
         has_plan = self.plan is not None
-        if self.review_button:
-            self.review_button.configure(state="normal" if (has_plan and not busy) else "disabled")
+        if self.review_conflicts_button:
+            self.review_conflicts_button.configure(state="normal" if has_plan and not busy else "disabled")
+        if self.review_fuzzy_button:
+            fuzzy_exists = has_plan and any(not m.confirmed for m in self.plan.matches)
+            self.review_fuzzy_button.configure(state="normal" if fuzzy_exists and not busy else "disabled")
         if self.merge_button:
-            self.merge_button.configure(state="normal" if (has_plan and not busy and self.plan and self.plan.phone_only) else "disabled")
+            can_merge = has_plan and not busy and self.plan and (self.plan.phone_only or self.plan.matches)
+            self.merge_button.configure(state="normal" if can_merge else "disabled")
 
     def scan(self) -> None:
         laptop_path = Path(self.laptop_var.get().strip()).expanduser()
@@ -92,7 +101,6 @@ class MusicSyncApp(tk.Tk):
         if not phone_path.is_dir():
             messagebox.showerror("Phone copy not found", f"Select the copied phone Music folder.\n\nExpected example:\n{DEFAULT_PHONE_COPY}")
             return
-
         self._set_busy(True)
         self.status_var.set("Scanning both libraries…")
 
@@ -109,19 +117,19 @@ class MusicSyncApp(tk.Tk):
         self.laptop_root = laptop_path
         self.phone_root = phone_path
         self.review_choices = {}
+        self.fuzzy_decisions = {}
         for item in self.tree.get_children():
             self.tree.delete(item)
-
         metadata_conflicts = sum(match.metadata_conflict for match in plan.matches)
         artwork_conflicts = sum(match.artwork_conflict for match in plan.matches)
-        exact_matches = sum(1 for match in plan.matches if match.confidence >= 0.99)
+        exact_matches = sum(1 for match in plan.matches if match.confirmed)
         fuzzy_matches = len(plan.matches) - exact_matches
         rows = [
             ("💻 Laptop-only", len(plan.laptop_only), "Songs already on the laptop"),
             ("📱 Phone-only", len(plan.phone_only), "These will be copied into the laptop"),
-            ("🟡 Matched", len(plan.matches), f"{exact_matches} exact, {fuzzy_matches} fuzzy matches"),
+            ("🟡 Matched", len(plan.matches), f"{exact_matches} exact/trusted, {fuzzy_matches} fuzzy/unconfirmed"),
             ("⚠️ Metadata conflicts", metadata_conflicts, "Review before choosing a source"),
-            ("🖼️ Artwork conflicts", artwork_conflicts, "Embedded artwork can be compared"),
+            ("🖼️ Artwork conflicts", artwork_conflicts, "Compare embedded artwork before choosing a source"),
             ("❗ Scan errors", len(laptop.errors) + len(phone.errors), "Unreadable files are never modified"),
         ]
         for row in rows:
@@ -142,11 +150,36 @@ class MusicSyncApp(tk.Tk):
             return
         self.review_choices = choices
         self.status_var.set(f"Conflict review saved — {len(choices)} decision(s).")
-        self.merge_button.configure(state="normal" if self.plan.phone_only or choices else "disabled")
+
+    def review_fuzzy(self) -> None:
+        if not self.plan:
+            return
+        fuzzy = [m for m in self.plan.matches if not m.confirmed]
+        if not fuzzy:
+            messagebox.showinfo("No fuzzy matches", "There are no unconfirmed fuzzy matches.")
+            return
+        decisions = review_fuzzy_matches(self, fuzzy)
+        if decisions is None:
+            self.status_var.set("Fuzzy review cancelled. Unconfirmed matches remain blocked from merge.")
+            return
+        self.fuzzy_decisions.update(decisions)
+        self.plan = apply_fuzzy_decisions(self.plan, decisions)
+        confirmed = sum(1 for m in self.plan.matches if m.confirmed)
+        self.status_var.set(f"Fuzzy review saved — {len(decisions)} decision(s), {confirmed} confirmed matches.")
+        self._set_busy(False)
 
     def merge(self) -> None:
         if not self.plan or not self.phone_root or not self.laptop_root:
             return
+        unresolved = [m for m in self.plan.matches if not m.confirmed]
+        if unresolved:
+            answer = messagebox.askyesno("Review fuzzy matches first?", f"There are {len(unresolved)} unconfirmed fuzzy match(es).\n\nReview them before merging?\n\nUnconfirmed fuzzy matches cannot be merged as matches.")
+            if answer:
+                self.review_fuzzy()
+                return
+            messagebox.showwarning("Fuzzy matches still unresolved", "Please review every fuzzy match before merging. This protects against merging different songs.")
+            return
+
         count = len(self.plan.phone_only)
         conflict_count = sum(m.metadata_conflict or m.artwork_conflict for m in self.plan.matches)
         if conflict_count and not self.review_choices:
@@ -161,33 +194,22 @@ class MusicSyncApp(tk.Tk):
         )
         if not answer:
             return
-
         self._set_busy(True)
         self.status_var.set("Creating backup and applying the merge plan…")
         backup_root = self.laptop_root.parent / "music-sync-backups"
 
         def worker() -> None:
             try:
-                backup, copied, replaced, skipped = merge_with_conflicts(
-                    self.plan, self.laptop_root, self.phone_root, backup_root, self.review_choices
-                )
+                backup, copied, replaced, skipped = merge_with_conflicts(self.plan, self.laptop_root, self.phone_root, backup_root, self.review_choices)
                 self.after(0, lambda: self._merge_done(backup, copied, replaced, skipped))
             except Exception as exc:
                 self.after(0, lambda: self._merge_failed(exc))
-
         threading.Thread(target=worker, daemon=True).start()
 
     def _merge_done(self, backup: Path, copied, replaced, skipped) -> None:
         self._set_busy(False)
         self.status_var.set(f"Merge complete — added {len(copied)}, replaced {len(replaced)}, skipped {len(skipped)}.")
-        messagebox.showinfo(
-            "Merge complete 🎵",
-            f"Added {len(copied)} song(s) to the laptop library.\n"
-            f"Applied {len(replaced)} phone choice(s).\n"
-            f"Skipped {len(skipped)} conflict(s).\n\n"
-            f"Backup created at:\n{backup}\n\n"
-            "You can now copy the finished laptop Music folder back to your A02s Music folder.",
-        )
+        messagebox.showinfo("Merge complete 🎵", f"Added {len(copied)} song(s).\nApplied {len(replaced)} phone choice(s).\nSkipped {len(skipped)} conflict(s).\n\nBackup created at:\n{backup}\n\nCopy the finished laptop library back to the A02s when ready.")
         self.scan()
 
     def _merge_failed(self, exc: Exception) -> None:
