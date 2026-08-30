@@ -10,6 +10,7 @@ from music_sync.dry_run import summarize
 from music_sync.fuzzy_ui import apply_fuzzy_decisions, review_fuzzy_matches
 from music_sync.matcher import build_plan
 from music_sync.models import SyncPlan
+from music_sync.report import make_report, save_json
 from music_sync.scanner import scan_library
 from music_sync.review import ConflictChoice
 from music_sync.sync import merge_with_conflicts
@@ -22,18 +23,21 @@ class MusicSyncApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("🎵 Ava Music Sync")
-        self.geometry("1080x740")
+        self.geometry("1120x760")
         self.minsize(900, 620)
         self.laptop_var = tk.StringVar(value=DEFAULT_LAPTOP)
         self.phone_var = tk.StringVar(value=DEFAULT_PHONE_COPY)
-        self.status_var = tk.StringVar(value="Select your copied phone Music folder, then scan.")
+        self.status_var = tk.StringVar(value="Select your second library, then scan.")
         self.plan: SyncPlan | None = None
         self.laptop_root: Path | None = None
         self.phone_root: Path | None = None
+        self.scan_errors = 0
+        self.last_report: Path | None = None
         self.scan_button: ttk.Button | None = None
         self.review_conflicts_button: ttk.Button | None = None
         self.review_fuzzy_button: ttk.Button | None = None
         self.dry_run_button: ttk.Button | None = None
+        self.export_report_button: ttk.Button | None = None
         self.merge_button: ttk.Button | None = None
         self.review_choices: dict[str, ConflictChoice] = {}
         self.fuzzy_decisions: dict[str, bool] = {}
@@ -57,8 +61,10 @@ class MusicSyncApp(tk.Tk):
         self.review_fuzzy_button.pack(side="left")
         self.dry_run_button = ttk.Button(actions, text="👁️ Dry Run", command=self.dry_run, state="disabled")
         self.dry_run_button.pack(side="left", padx=8)
+        self.export_report_button = ttk.Button(actions, text="📄 Export Report", command=self.export_report, state="disabled")
+        self.export_report_button.pack(side="left")
         self.merge_button = ttk.Button(actions, text="🔄 Merge Safely", command=self.merge, state="disabled")
-        self.merge_button.pack(side="left")
+        self.merge_button.pack(side="left", padx=8)
 
         self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=20)
         self.tree.heading("category", text="Category")
@@ -66,7 +72,7 @@ class MusicSyncApp(tk.Tk):
         self.tree.heading("details", text="Details")
         self.tree.column("category", width=270, anchor="w")
         self.tree.column("count", width=90, anchor="center")
-        self.tree.column("details", width=620, anchor="w")
+        self.tree.column("details", width=650, anchor="w")
         self.tree.pack(fill="both", expand=True)
         ttk.Label(frame, textvariable=self.status_var).pack(anchor="w", pady=(12, 0))
 
@@ -94,6 +100,8 @@ class MusicSyncApp(tk.Tk):
             self.review_fuzzy_button.configure(state="normal" if fuzzy_exists and not busy else "disabled")
         if self.dry_run_button:
             self.dry_run_button.configure(state="normal" if has_plan and not busy else "disabled")
+        if self.export_report_button:
+            self.export_report_button.configure(state="normal" if self.plan and not busy else "disabled")
         if self.merge_button:
             can_merge = has_plan and not busy and self.plan and (self.plan.phone_only or self.plan.matches)
             self.merge_button.configure(state="normal" if can_merge else "disabled")
@@ -111,10 +119,10 @@ class MusicSyncApp(tk.Tk):
         self.status_var.set("Scanning both libraries…")
 
         def worker() -> None:
-            laptop = scan_library(laptop_path, "laptop")
-            phone = scan_library(phone_path, "phone")
-            plan = build_plan(laptop, phone)
-            self.after(0, lambda: self._show_scan(laptop_path, phone_path, laptop, phone, plan))
+            library_a = scan_library(laptop_path, "laptop")
+            library_b = scan_library(phone_path, "phone")
+            plan = build_plan(library_a, library_b)
+            self.after(0, lambda: self._show_scan(laptop_path, phone_path, library_a, library_b, plan))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -122,6 +130,8 @@ class MusicSyncApp(tk.Tk):
         self.plan = plan
         self.laptop_root = laptop_path
         self.phone_root = phone_path
+        self.scan_errors = len(laptop.errors) + len(phone.errors)
+        self.last_report = None
         self.review_choices = {}
         self.fuzzy_decisions = {}
         for item in self.tree.get_children():
@@ -136,7 +146,7 @@ class MusicSyncApp(tk.Tk):
             ("🟡 Matched", len(plan.matches), f"{exact_matches} exact/trusted, {fuzzy_matches} fuzzy/unconfirmed"),
             ("⚠️ Metadata conflicts", metadata_conflicts, "Review before choosing a source"),
             ("🖼️ Artwork conflicts", artwork_conflicts, "Compare embedded artwork before choosing a source"),
-            ("❗ Scan errors", len(laptop.errors) + len(phone.errors), "Unreadable files are never modified"),
+            ("❗ Scan errors", self.scan_errors, "Unreadable files are never modified"),
         ]
         for row in rows:
             self.tree.insert("", "end", values=row)
@@ -146,14 +156,13 @@ class MusicSyncApp(tk.Tk):
     def dry_run(self) -> None:
         if not self.plan:
             return
-        summary = summarize(self.plan)
-        unresolved = summary.fuzzy
+        summary = summarize(self.plan, self.scan_errors)
         messagebox.showinfo(
             "Dry run — no files changed",
             f"READ-ONLY PREVIEW\n\n"
             f"Would add: {summary.add}\n"
             f"Matched: {summary.matched}\n"
-            f"Fuzzy matches needing review: {unresolved}\n"
+            f"Fuzzy matches needing review: {summary.fuzzy}\n"
             f"Metadata conflicts: {summary.metadata_conflicts}\n"
             f"Artwork conflicts: {summary.artwork_conflicts}\n"
             f"Scan errors: {summary.scan_errors}\n\n"
@@ -191,6 +200,36 @@ class MusicSyncApp(tk.Tk):
         confirmed = sum(1 for m in self.plan.matches if m.confirmed)
         self.status_var.set(f"Fuzzy review saved — {len(decisions)} decision(s), {confirmed} confirmed matches.")
         self._set_busy(False)
+
+    def export_report(self) -> None:
+        if not self.plan or not self.laptop_root or not self.phone_root:
+            return
+        metadata = sum(m.metadata_conflict for m in self.plan.matches)
+        artwork = sum(m.artwork_conflict for m in self.plan.matches)
+        matched = len(self.plan.matches)
+        fuzzy = sum(not m.confirmed for m in self.plan.matches)
+        destination = filedialog.asksaveasfilename(
+            title="Export sync report",
+            defaultextension=".json",
+            filetypes=[("JSON report", "*.json")],
+            initialfile="music-sync-report.json",
+        )
+        if not destination:
+            return
+        report = make_report(
+            library_a=self.laptop_root,
+            library_b=self.phone_root,
+            added=len(self.plan.phone_only),
+            replaced=0,
+            skipped=0,
+            matched=matched,
+            fuzzy=fuzzy,
+            metadata_conflicts=metadata,
+            artwork_conflicts=artwork,
+            scan_errors=self.scan_errors,
+        )
+        self.last_report = save_json(report, Path(destination))
+        self.status_var.set(f"Report exported to {self.last_report}")
 
     def merge(self) -> None:
         if not self.plan or not self.phone_root or not self.laptop_root:
