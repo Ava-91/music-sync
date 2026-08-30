@@ -2,15 +2,14 @@
 
 A safe, metadata-aware music library reconciliation and synchronization tool for Windows.
 
-`music-sync` is built for the very real problem of maintaining the **same music collection across multiple devices** when each copy has changed independently. It compares two local music libraries, finds songs that exist only on one side, detects metadata and embedded-artwork differences, helps you review ambiguous matches, creates a backup, and builds a merged master library.
+`music-sync` compares two independently maintained music libraries, finds tracks that exist only on one side, detects metadata and embedded-artwork differences, helps review ambiguous matches, creates a backup, and builds a merged master library.
 
-> **It is not an A02s-only tool.** The A02s is simply the device this project was originally built and tested around. `music-sync` works with **any phone, tablet, USB drive, SD card, external disk, computer, backup, or other device** whose music folder can be copied to Windows and exposed as a normal local folder.
+It works with **any two Windows-accessible music folders**. The application does not care where the folders came from.
 
 ## ✨ What it does
 
 - 🔎 Scans two normal Windows folders recursively
-- 🟢 Finds tracks that exist only in Library A
-- 🔵 Finds tracks that exist only in Library B
+- 🟢 Finds tracks unique to either library
 - 🟡 Matches tracks using metadata, filename, duration, and conservative fuzzy matching
 - 🧠 Separates uncertain fuzzy matches from trusted matches
 - 📝 Detects metadata conflicts
@@ -19,82 +18,42 @@ A safe, metadata-aware music library reconciliation and synchronization tool for
 - 🔍 Reviews every fuzzy match before it can be treated as the same song
 - 💾 Creates a timestamped backup before merging
 - 🛡️ Never uses an unconfirmed fuzzy match for a merge
-- 📂 Works with arbitrary local library paths rather than hard-coded phone models
-- 🔌 Does not require direct phone/MTP access — copy the device's music folder to Windows first
+- 📁 Works with arbitrary local library paths
+- 🔒 Operates entirely on the folders you select
 
-## 📱 Works with any phone
+## 🗂️ General workflow
 
-The app does **not** identify or depend on a particular phone model.
+1. Make sure both music collections are available as normal Windows folders.
+2. Launch `music-sync`.
+3. Select **Library A** and **Library B**.
+4. Click **Scan & Preview**.
+5. Review metadata/artwork conflicts and fuzzy matches.
+6. Confirm or reject every fuzzy suggestion.
+7. Click **Merge Safely**. The app backs up first, adds unique tracks, and applies only reviewed conflict choices.
+8. Use or copy the resulting master library wherever you need it.
 
-If your device can expose its music folder to Windows so that you can copy it to a normal folder, `music-sync` can work with it. For example:
-
-```text
-Android phone  → copy Music folder → Windows folder
-iPhone         → copy exported music → Windows folder
-Tablet         → copy music folder → Windows folder
-USB drive      → use its music folder directly
-SD card        → use its music folder directly
-Another PC     → copy/export its music library → Windows folder
-Backup         → use the backup folder as a library
-```
-
-The application only needs two ordinary Windows-accessible directories at comparison time. It does **not** need to know whether the files originally came from a Samsung, Google Pixel, iPhone, Xiaomi, OnePlus, tablet, USB drive, or anything else.
-
-### Example
-
-```text
-📱 Any phone
-   │
-   │ copy Music folder
-   ▼
-📁 C:\Music\phone-copy
-   │
-   │
-   ├──────────────────────┐
-   │                      │
-   ▼                      ▼
-💻 Laptop library      📱 Phone copy
-E:\Music\Master       C:\Music\phone-copy
-   │                      │
-   └──────────┬───────────┘
-              ▼
-       🎵 music-sync
-              │
-              ▼
-       🧠 Reconciliation
-              │
-       ┌──────┼──────┐
-       ▼      ▼      ▼
-     MATCH  CONFLICT UNIQUE
-       │      │      │
-       └──────┼──────┘
-              ▼
-        💾 Backup first
-              │
-              ▼
-       🎵 Merged library
-```
+The application does not need to identify the original source of either library. A library can come from another computer, removable storage, an exported collection, a backup, or any other source—as long as Windows can access the files.
 
 ## 🎧 Why reconciliation instead of simple syncing?
 
 A normal one-way sync assumes that one side is always correct. Real music collections are messier:
 
-- You may download a new song on your phone.
-- You may edit its title on your laptop.
-- You may replace an album cover on your laptop.
-- You may have different filenames for the same track.
-- Both devices may contain different versions of a file.
+- A new track may exist in only one library.
+- A title may have been edited in one copy.
+- Album artwork may have been replaced in one copy.
+- The same track may have different filenames.
+- Both libraries may contain different versions of the same file.
 
 `music-sync` treats this as a **reconciliation problem** rather than blindly copying one folder over another.
 
 For example:
 
 ```text
-Laptop:
+Library A:
   Title: Getting Older
   Artwork: custom artwork
 
-Phone:
+Library B:
   Title: Getting Older
   Artwork: old artwork
 
@@ -106,23 +65,8 @@ Phone:
 👀 Review
              ↓
 
-💻 Keep Laptop artwork
+💻 Keep Library A artwork
 ```
-
-## 🔄 Current workflow
-
-1. Copy your device's `Music` folder to a normal Windows folder.
-2. Launch `music-sync`.
-3. Select the laptop/master library and the copied device library.
-4. Click **Scan & Preview**.
-5. Review metadata and artwork conflicts.
-6. Review every fuzzy match and confirm whether it is the same song.
-7. Click **Merge Safely**.
-8. `music-sync` creates a backup before changing the master library.
-9. Phone/device-only tracks are added to the master library.
-10. Copy the finished master library back to your device when you're ready.
-
-Nothing in the project requires the destination device to be a Samsung A02s.
 
 ## 🧠 Matching safety
 
@@ -146,7 +90,7 @@ An unresolved fuzzy match blocks the merge operation rather than guessing.
 
 - Scanning is read-only.
 - A backup is created before every merge.
-- Existing laptop/master files are not silently overwritten.
+- Existing master-library files are not silently overwritten.
 - Unconfirmed fuzzy matches cannot be merged as matches.
 - Unreadable files are never modified.
 - Music files and personal library contents do not belong in this repository.
