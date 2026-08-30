@@ -22,6 +22,11 @@ class Track:
     modified_ns: int = 0
     file_hash: str | None = None
     artwork_hash: str | None = None
+    artwork_hashes: tuple[str, ...] = ()
+
+    @property
+    def artwork_count(self) -> int:
+        return len(self.artwork_hashes)
 
     @property
     def display_title(self) -> str:
