@@ -11,35 +11,33 @@ A safe, metadata-aware music library merger and synchronizer for Windows.
 - 🟡 Matches the same tracks using metadata, filename, duration, and conservative fuzzy matching
 - 📝 Detects metadata conflicts
 - 🖼️ Detects differences in embedded album artwork
+- 👀 Reviews metadata/artwork conflicts side-by-side before applying choices
 - 💾 Creates a timestamped laptop backup before merging
-- 🛡️ Never overwrites an existing laptop file during the merge
-- 👀 Shows a preview before changing anything
-- 📱 Leaves the final phone copy step to you, so the physical A02s storage is never touched directly
+- 🛡️ Never overwrites an existing laptop file unless you explicitly choose the phone version for a conflict
+- 📱 Leaves the final phone copy step to you, so physical A02s storage is never touched directly
 
 ## Your workflow
 
-1. On the Samsung A02s, copy `Internal storage/Music` to a normal Windows folder, for example:
-   `E:\Ava files\phone music`
-2. Run `install.bat` once to install the dependency, then use `run.bat` whenever you want to launch the app.
+1. On the Samsung A02s, copy `Internal storage/Music` to a normal Windows folder, for example `E:\Ava files\phone music`.
+2. Run `install.bat` once, then use `run.bat` whenever you want to launch the app.
 3. Keep the laptop folder as `E:\Ava files\ava music` or choose another folder.
 4. Select the copied phone folder.
 5. Click **Scan & Preview**.
-6. Review the counts and conflicts.
-7. Click **Merge Phone-Only Songs** if everything looks right.
-8. The app backs up the laptop library and adds phone-only tracks without replacing laptop files.
-9. Copy the finished laptop `ava music` folder back to the A02s `Internal storage/Music` folder.
+6. Click **Review Conflicts** when metadata or artwork conflicts are found.
+7. Choose **Keep Laptop**, **Keep Phone**, or **Skip** for each conflict.
+8. Click **Merge Safely**. The app backs up first, adds phone-only tracks, and applies only the choices you made.
+9. Copy the finished laptop library back to the A02s `Internal storage/Music` folder.
 
-### Conflict rule
+## Conflict review
 
-When the same track exists on both sides, the **laptop version is the preferred version**. This is intentional because the laptop library is where custom titles, artwork, and other edits are maintained.
-
-The app currently does not rewrite the phone copy directly and does not modify matched laptop files.
+Each metadata/artwork conflict is presented with the laptop and phone track information side by side. Embedded album artwork is shown when it can be decoded. The laptop version remains the default choice, so closing/cancelling review never causes a phone version to replace it.
 
 ## Requirements
 
 - Windows 10/11
 - Python 3.11+
 - `mutagen`
+- `Pillow` for embedded artwork previews
 
 Manual install:
 
@@ -58,8 +56,8 @@ Or use the included `install.bat` and `run.bat` launchers.
 ## Safety
 
 - Scanning is read-only.
-- A backup is created before a merge.
-- Existing laptop files are never replaced by phone files.
+- A backup is created before every merge.
+- Existing laptop files are never replaced unless the user explicitly chooses **Keep Phone** for a reviewed conflict.
 - Music files and personal library contents do not belong in this repository.
 - Backups are stored outside the music library in `music-sync-backups`.
 
@@ -70,12 +68,15 @@ music-sync/
 ├── app.py
 ├── music_sync/
 │   ├── __init__.py
+│   ├── artwork.py
+│   ├── conflict_ui.py
 │   ├── models.py
-│   ├── scanner.py
 │   ├── matcher.py
+│   ├── review.py
 │   └── sync.py
 ├── tests/
-│   └── test_matcher.py
+│   ├── test_matcher.py
+│   └── test_review.py
 ├── install.bat
 ├── run.bat
 ├── requirements.txt
