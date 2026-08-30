@@ -52,21 +52,37 @@ def _make_match(laptop: Track, phone: Track, confidence: float, confirmed: bool)
 
 
 def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -> SyncPlan:
-    """Build a non-destructive merge plan.
-
-    Exact metadata/name matches are trusted. Fuzzy matches are deliberately
-    marked unconfirmed and must be reviewed before they can be treated as the
-    same song by the application.
-    """
+    """Build a non-destructive merge plan using content identity first."""
     plan = SyncPlan()
     used_phone: set[int] = set()
     matched_laptop: set[object] = set()
 
-    phone_by_key: dict[tuple[str, str, str], list[tuple[int, Track]]] = {}
+    # Byte-identical files are the strongest possible match and take priority
+    # over metadata, filenames, or fuzzy similarity.
+    phone_by_hash: dict[str, list[tuple[int, Track]]] = {}
     for index, track in enumerate(phone.tracks):
-        phone_by_key.setdefault(track_key(track), []).append((index, track))
+        if track.file_hash:
+            phone_by_hash.setdefault(track.file_hash, []).append((index, track))
 
     for laptop_track in laptop.tracks:
+        if not laptop_track.file_hash:
+            continue
+        candidate = next((item for item in phone_by_hash.get(laptop_track.file_hash, []) if item[0] not in used_phone), None)
+        if candidate is None:
+            continue
+        index, phone_track = candidate
+        used_phone.add(index)
+        matched_laptop.add(laptop_track.path)
+        plan.matches.append(_make_match(laptop_track, phone_track, 1.0, True))
+
+    phone_by_key: dict[tuple[str, str, str], list[tuple[int, Track]]] = {}
+    for index, track in enumerate(phone.tracks):
+        if index not in used_phone:
+            phone_by_key.setdefault(track_key(track), []).append((index, track))
+
+    for laptop_track in laptop.tracks:
+        if laptop_track.path in matched_laptop:
+            continue
         candidate = next(((i, t) for i, t in phone_by_key.get(track_key(laptop_track), []) if i not in used_phone), None)
         if candidate is None:
             continue
@@ -77,7 +93,8 @@ def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -
 
     phone_by_name: dict[str, list[tuple[int, Track]]] = {}
     for index, track in enumerate(phone.tracks):
-        phone_by_name.setdefault(normalize(track.path.stem), []).append((index, track))
+        if index not in used_phone:
+            phone_by_name.setdefault(normalize(track.path.stem), []).append((index, track))
 
     for laptop_track in laptop.tracks:
         if laptop_track.path in matched_laptop:
