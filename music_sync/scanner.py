@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 from mutagen import File
 
+from .artwork_hash import extract_artwork_info
 from .hashing import sha256_file
 from .models import ScanResult, Side, Track
 
@@ -21,34 +21,6 @@ def _first_tag(audio, *names: str) -> str:
                 return str(value[0])
             return str(value)
     return ""
-
-
-def _artwork_hash(audio) -> str | None:
-    """Hash all embedded artwork payloads for common Mutagen-supported formats."""
-    if not audio:
-        return None
-    images: list[bytes] = []
-    for key, value in (audio.tags or {}).items():
-        key_text = str(key).upper()
-        if key_text.startswith("APIC"):
-            data = getattr(value, "data", None)
-            if data:
-                images.append(bytes(data))
-        elif key_text == "COVR":
-            try:
-                images.extend(bytes(item) for item in value)
-            except (TypeError, ValueError):
-                pass
-    for picture in getattr(audio, "pictures", []) or []:
-        data = getattr(picture, "data", None)
-        if data:
-            images.append(bytes(data))
-    if not images:
-        return None
-    digest = hashlib.sha256()
-    for image in images:
-        digest.update(image)
-    return digest.hexdigest()
 
 
 def scan_library(root: str | Path, side: Side) -> ScanResult:
@@ -69,6 +41,7 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
             easy_audio = File(path, easy=True)
             raw_audio = File(path, easy=False)
             duration = float(raw_audio.info.length) if raw_audio and raw_audio.info else None
+            artwork = extract_artwork_info(path)
             stat = path.stat()
             result.tracks.append(Track(
                 path=path,
@@ -80,7 +53,8 @@ def scan_library(root: str | Path, side: Side) -> ScanResult:
                 size=stat.st_size,
                 modified_ns=stat.st_mtime_ns,
                 file_hash=sha256_file(path),
-                artwork_hash=_artwork_hash(raw_audio),
+                artwork_hash=artwork.primary_hash,
+                artwork_hashes=artwork.hashes,
             ))
         except (OSError, ValueError, TypeError) as exc:
             result.errors.append(f"Could not read {path}: {exc}")
