@@ -8,29 +8,30 @@ A safe, metadata-aware music library merger and synchronizer for Windows.
 
 - 🔎 Scans two normal Windows folders recursively
 - 🟢 Finds laptop-only and phone-only tracks
-- 🟡 Matches the same tracks using metadata, filename, duration, and conservative fuzzy matching
+- 🟡 Matches tracks using metadata, filename, duration, and conservative fuzzy matching
+- 🧠 Separates uncertain fuzzy matches from trusted matches
 - 📝 Detects metadata conflicts
 - 🖼️ Detects differences in embedded album artwork
-- 👀 Reviews metadata/artwork conflicts side-by-side before applying choices
+- 👀 Reviews metadata/artwork conflicts side-by-side
+- 🔍 Reviews every fuzzy match before it can be treated as the same song
 - 💾 Creates a timestamped laptop backup before merging
-- 🛡️ Never overwrites an existing laptop file unless you explicitly choose the phone version for a conflict
+- 🛡️ Never uses an unconfirmed fuzzy match for a merge
 - 📱 Leaves the final phone copy step to you, so physical A02s storage is never touched directly
 
 ## Your workflow
 
-1. On the Samsung A02s, copy `Internal storage/Music` to a normal Windows folder, for example `E:\Ava files\phone music`.
+1. Copy the A02s `Internal storage/Music` folder to a normal Windows folder, for example `E:\Ava files\phone music`.
 2. Run `install.bat` once, then use `run.bat` whenever you want to launch the app.
-3. Keep the laptop folder as `E:\Ava files\ava music` or choose another folder.
-4. Select the copied phone folder.
-5. Click **Scan & Preview**.
-6. Click **Review Conflicts** when metadata or artwork conflicts are found.
-7. Choose **Keep Laptop**, **Keep Phone**, or **Skip** for each conflict.
-8. Click **Merge Safely**. The app backs up first, adds phone-only tracks, and applies only the choices you made.
-9. Copy the finished laptop library back to the A02s `Internal storage/Music` folder.
+3. Select the laptop and copied phone libraries.
+4. Click **Scan & Preview**.
+5. Review metadata/artwork conflicts and fuzzy matches.
+6. Confirm or reject every fuzzy suggestion.
+7. Click **Merge Safely**. The app backs up first, adds phone-only tracks, and applies only reviewed conflict choices.
+8. Copy the finished laptop library back to the A02s `Internal storage/Music` folder.
 
-## Conflict review
+## Matching safety
 
-Each metadata/artwork conflict is presented with the laptop and phone track information side by side. Embedded album artwork is shown when it can be decoded. The laptop version remains the default choice, so closing/cancelling review never causes a phone version to replace it.
+Exact metadata matches and strong filename/duration matches are trusted. Conservative fuzzy matches are marked **unconfirmed** and must be explicitly accepted as the same song or rejected as different songs. An unresolved fuzzy match blocks the merge operation.
 
 ## Requirements
 
@@ -58,6 +59,7 @@ Or use the included `install.bat` and `run.bat` launchers.
 - Scanning is read-only.
 - A backup is created before every merge.
 - Existing laptop files are never replaced unless the user explicitly chooses **Keep Phone** for a reviewed conflict.
+- Unconfirmed fuzzy matches cannot be merged as matches.
 - Music files and personal library contents do not belong in this repository.
 - Backups are stored outside the music library in `music-sync-backups`.
 
@@ -70,11 +72,13 @@ music-sync/
 │   ├── __init__.py
 │   ├── artwork.py
 │   ├── conflict_ui.py
+│   ├── fuzzy_ui.py
 │   ├── models.py
 │   ├── matcher.py
 │   ├── review.py
 │   └── sync.py
 ├── tests/
+│   ├── test_fuzzy_review.py
 │   ├── test_matcher.py
 │   └── test_review.py
 ├── install.bat
