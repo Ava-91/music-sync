@@ -9,9 +9,10 @@ from music_sync.direction import MasterLibrary, SyncDirection
 from music_sync.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
 from music_sync.execution_report import ExecutionReport, report_from_mirror, report_from_reconcile, report_from_safe
 from music_sync.fuzzy_ui import apply_fuzzy_decisions, review_fuzzy_matches
+from music_sync.health import build_health_report
 from music_sync.matcher import build_plan
 from music_sync.models import SyncMode, SyncPlan
-from music_sync.mirror import MirrorConfirmationError, build_mirror_preview, execute_mirror
+from music_sync.mirror import build_mirror_preview, execute_mirror
 from music_sync.path_safety import validate_library_pair
 from music_sync.reconcile import ReconcileDecision, execute_reconcile
 from music_sync.review import ConflictChoice
@@ -24,16 +25,18 @@ class MusicSyncApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("music-sync")
-        self.geometry("1180x780")
-        self.minsize(940, 640)
+        self.geometry("1180x820")
+        self.minsize(940, 660)
         self.settings_store = SettingsStore()
         self.settings = self.settings_store.load()
         self.plan: SyncPlan | None = None
+        self.scan_a = None
+        self.scan_b = None
         self.library_a_root: Path | None = None
         self.library_b_root: Path | None = None
         self.last_report: ExecutionReport | None = None
         self.review_choices: dict[str, ConflictChoice] = {}
-        self.scan_errors = 0
+        self.health = None
         self.library_a_var = tk.StringVar(value=self.settings.library_a)
         self.library_b_var = tk.StringVar(value=self.settings.library_b)
         self.master_var = tk.StringVar(value=self.settings.master or "library_a")
@@ -69,8 +72,8 @@ class MusicSyncApp(tk.Tk):
         self.execute_button.pack(side="left")
         self.export_button = ttk.Button(actions, text="Export report", command=self.export_report, state="disabled")
         self.export_button.pack(side="left", padx=8)
-        self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=21)
-        for column, title, width in (("category", "Category", 260), ("count", "Count", 90), ("details", "Details", 700)):
+        self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=24)
+        for column, title, width in (("category", "Category", 280), ("count", "Count", 100), ("details", "Details", 680)):
             self.tree.heading(column, text=title)
             self.tree.column(column, width=width, anchor="w")
         self.tree.pack(fill="both", expand=True)
@@ -98,17 +101,14 @@ class MusicSyncApp(tk.Tk):
             self._save_settings()
 
     def _save_settings(self) -> None:
-        try:
-            settings = Settings(
-                library_a=self.library_a_var.get().strip(), library_b=self.library_b_var.get().strip(),
-                master=self.master_var.get().strip(), sync_mode=self.mode_var.get().strip(),
-                backup_location=self.backup_var.get().strip(), fuzzy_threshold=self.settings.fuzzy_threshold,
-                conflict_defaults=self.settings.conflict_defaults, appearance=self.settings.appearance,
-            )
-            self.settings_store.save(settings)
-            self.settings = settings
-        except ValueError as exc:
-            messagebox.showerror("Invalid settings", str(exc), parent=self)
+        settings = Settings(
+            library_a=self.library_a_var.get().strip(), library_b=self.library_b_var.get().strip(),
+            master=self.master_var.get().strip(), sync_mode=self.mode_var.get().strip(),
+            backup_location=self.backup_var.get().strip(), fuzzy_threshold=self.settings.fuzzy_threshold,
+            conflict_defaults=self.settings.conflict_defaults, appearance=self.settings.appearance,
+        )
+        self.settings_store.save(settings)
+        self.settings = settings
 
     def _direction(self) -> SyncDirection:
         if not self.library_a_root or not self.library_b_root:
@@ -123,8 +123,7 @@ class MusicSyncApp(tk.Tk):
         return Path(value).expanduser()
 
     def _set_busy(self, busy: bool) -> None:
-        if self.scan_button:
-            self.scan_button.configure(state="disabled" if busy else "normal")
+        self.scan_button.configure(state="disabled" if busy else "normal")
         self._update_controls(busy)
 
     def _update_controls(self, busy: bool = False) -> None:
@@ -132,8 +131,33 @@ class MusicSyncApp(tk.Tk):
         fuzzy = has_plan and any(not match.confirmed for match in self.plan.matches)
         conflicts = has_plan and any(match.metadata_conflict or match.artwork_conflict for match in self.plan.matches)
         for button, enabled in ((self.review_conflicts_button, conflicts), (self.review_fuzzy_button, fuzzy), (self.dry_run_button, has_plan), (self.execute_button, has_plan), (self.export_button, self.last_report is not None)):
-            if button:
-                button.configure(state="normal" if enabled and not busy else "disabled")
+            button.configure(state="normal" if enabled and not busy else "disabled")
+
+    def _refresh_health(self) -> None:
+        if self.scan_a is None or self.scan_b is None:
+            return
+        self.health = build_health_report(self.scan_a, self.scan_b, self.plan)
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        a, b, p = self.health.library_a, self.health.library_b, self.health.plan
+        rows = [
+            ("Library A tracks", a.track_count, ""),
+            ("Library B tracks", b.track_count, ""),
+            ("A metadata completeness", f"{a.metadata_completeness_pct:.1f}%", f"{a.complete_metadata}/{a.track_count}"),
+            ("B metadata completeness", f"{b.metadata_completeness_pct:.1f}%", f"{b.complete_metadata}/{b.track_count}"),
+            ("A artwork coverage", f"{a.artwork_coverage_pct:.1f}%", f"{a.artwork_tracks}/{a.track_count}"),
+            ("B artwork coverage", f"{b.artwork_coverage_pct:.1f}%", f"{b.artwork_tracks}/{b.track_count}"),
+            ("A duplicate groups", len(a.duplicate_groups), f"{a.duplicate_tracks} tracks"),
+            ("B duplicate groups", len(b.duplicate_groups), f"{b.duplicate_tracks} tracks"),
+            ("A unreadable files", a.unreadable_files, ""),
+            ("B unreadable files", b.unreadable_files, ""),
+            ("Unresolved conflicts", p.unresolved_conflicts, "Current plan"),
+            ("Unresolved fuzzy matches", p.unresolved_fuzzy_matches, "Current plan"),
+            ("A-only tracks", len(self.plan.library_a_only) if self.plan else 0, "Plan"),
+            ("B-only tracks", len(self.plan.library_b_only) if self.plan else 0, "Plan"),
+        ]
+        for row in rows:
+            self.tree.insert("", "end", values=row)
 
     def scan(self) -> None:
         self._save_settings()
@@ -144,33 +168,20 @@ class MusicSyncApp(tk.Tk):
             return
         self._set_busy(True)
         self.status_var.set("Scanning both libraries…")
-
         def worker() -> None:
             result_a = scan_library(library_a, "a")
             result_b = scan_library(library_b, "b")
             plan = build_plan(result_a, result_b, threshold=self.settings.fuzzy_threshold)
             self.after(0, lambda: self._show_scan(library_a, library_b, result_a, result_b, plan))
-
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_scan(self, library_a: Path, library_b: Path, result_a, result_b, plan: SyncPlan) -> None:
-        self.plan, self.library_a_root, self.library_b_root = plan, library_a, library_b
+        self.plan, self.scan_a, self.scan_b = plan, result_a, result_b
+        self.library_a_root, self.library_b_root = library_a, library_b
         self.scan_errors = len(result_a.errors) + len(result_b.errors)
         self.last_report = None
         self.review_choices = {}
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        exact = sum(match.confirmed for match in plan.matches)
-        rows = [
-            ("Library A-only", len(plan.library_a_only), "Missing from Library B"),
-            ("Library B-only", len(plan.library_b_only), "Missing from Library A"),
-            ("Matches", len(plan.matches), f"{exact} confirmed, {len(plan.matches) - exact} fuzzy/unconfirmed"),
-            ("Metadata conflicts", sum(m.metadata_conflict for m in plan.matches), "Require explicit review"),
-            ("Artwork conflicts", sum(m.artwork_conflict for m in plan.matches), "Require explicit review"),
-            ("Scan errors", self.scan_errors, "Unreadable files are not modified"),
-        ]
-        for row in rows:
-            self.tree.insert("", "end", values=row)
+        self._refresh_health()
         self._set_busy(False)
         self.status_var.set(f"Scan complete — {len(result_a.tracks)} + {len(result_b.tracks)} tracks. Nothing was changed.")
 
@@ -182,6 +193,7 @@ class MusicSyncApp(tk.Tk):
         choices = review_conflicts(self, conflicts)
         if choices is not None:
             self.review_choices = choices
+            self._refresh_health()
             self.status_var.set(f"Saved {len(choices)} conflict decision(s).")
 
     def review_fuzzy(self) -> None:
@@ -191,6 +203,7 @@ class MusicSyncApp(tk.Tk):
         decisions = review_fuzzy_matches(self, fuzzy)
         if decisions is not None:
             self.plan = apply_fuzzy_decisions(self.plan, decisions)
+            self._refresh_health()
             self.status_var.set("Fuzzy review saved. Rescan if the filesystem changes.")
             self._update_controls()
 
@@ -236,10 +249,9 @@ class MusicSyncApp(tk.Tk):
     def execute(self) -> None:
         if not self.plan:
             return
-        mode = self.mode_var.get()
-        if mode == SyncMode.SAFE:
+        if self.mode_var.get() == SyncMode.SAFE:
             self._execute_safe()
-        elif mode == SyncMode.RECONCILE:
+        elif self.mode_var.get() == SyncMode.RECONCILE:
             self._execute_reconcile()
         else:
             self._execute_mirror()
