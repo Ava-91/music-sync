@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .direction import SyncDirection
 from .models import SyncPlan
+from .path_safety import validate_backup_root, validate_library_pair
 from .review import ConflictChoice
 
 
@@ -34,11 +35,9 @@ class SafeExecutionResult:
 def make_backup(root: Path, backup_root: Path) -> Path:
     """Create a timestamped copy of a library before changing it."""
     root = root.resolve()
-    backup_root = backup_root.resolve()
-    if root == backup_root or root.is_relative_to(backup_root) or backup_root.is_relative_to(root):
-        raise ValueError("Backup location must be outside the library being backed up.")
     if not root.is_dir():
         raise FileNotFoundError(f"Library not found: {root}")
+    backup_root = validate_backup_root(backup_root, (root,))
     backup_root.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     destination = backup_root / f"music_backup_{timestamp}"
@@ -71,15 +70,11 @@ def _source_only(plan: SyncPlan, direction: SyncDirection):
 
 def execute_safe(plan: SyncPlan, direction: SyncDirection, backup_root: Path) -> SafeExecutionResult:
     """Copy only source-only tracks without deleting or overwriting destination files."""
-    source = direction.source.resolve()
-    destination = direction.destination.resolve()
-    if source == destination:
-        raise ValueError("Safe sync requires different source and destination directories.")
-    if not source.is_dir() or not destination.is_dir():
-        raise FileNotFoundError("Safe sync requires existing source and destination directories.")
+    source, destination = validate_library_pair(direction.source, direction.destination)
+    validate_backup_root(backup_root, (destination,))
 
     result = SafeExecutionResult()
-    candidates = _source_only(plan, direction)
+    candidates = _source_only(plan, SyncDirection(source=source, destination=destination, master=direction.master))
     planned: list[tuple[Path, Path]] = []
     for track in candidates:
         track_path = track.path.resolve()
