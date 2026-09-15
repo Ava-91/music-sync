@@ -81,9 +81,9 @@ class ConflictReviewDialog(tk.Toplevel):
         if details.conflicts:
             evidence += "\nDetected: " + " • ".join(details.conflicts)
         self.evidence.configure(text=evidence)
-        self._populate_track(self.left, match.laptop)
-        self._populate_track(self.right, match.phone)
-        self.choice.set(self.choices.get(str(match.laptop.path), ConflictChoice.LAPTOP).value)
+        self._populate_track(self.left, match.library_a)
+        self._populate_track(self.right, match.library_b)
+        self.choice.set(self.choices.get(str(match.library_a.path), ConflictChoice.LAPTOP).value)
 
     def _populate_track(self, panel: ttk.Frame, track) -> None:
         self._clear_panel(panel)
@@ -104,7 +104,7 @@ class ConflictReviewDialog(tk.Toplevel):
 
     def _save_choice(self) -> None:
         if self.matches:
-            self.choices[str(self.matches[self.index].laptop.path)] = ConflictChoice(self.choice.get())
+            self.choices[str(self.matches[self.index].library_a.path)] = ConflictChoice(self.choice.get())
 
     def next(self) -> None:
         self._save_choice()
