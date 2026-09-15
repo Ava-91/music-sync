@@ -33,6 +33,23 @@ def test_fresh_plan_is_accepted(tmp_path: Path):
     validate_plan_freshness(make_plan(a, b))
 
 
+def test_two_empty_libraries_are_a_valid_fresh_plan(tmp_path: Path):
+    a = tmp_path / "A"
+    b = tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    validate_plan_freshness(make_plan(a, b))
+
+
+def test_empty_and_populated_libraries_are_a_valid_fresh_plan(tmp_path: Path):
+    a = tmp_path / "A"
+    b = tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    (a / "one.mp3").write_bytes(b"one")
+    validate_plan_freshness(make_plan(a, b))
+
+
 @pytest.mark.parametrize("mutation", ["add", "delete", "size", "mtime"])
 def test_filesystem_change_invalidates_plan(tmp_path: Path, mutation: str):
     a, b = make_libraries(tmp_path)
