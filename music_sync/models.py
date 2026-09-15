@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 Side = Literal["a", "b", "laptop", "phone"]
+_UNSET = object()
 
 
 @dataclass(slots=True)
@@ -82,17 +83,17 @@ class SyncPlan:
     matches: list[Match] = field(default_factory=list)
     library_a_root: Path | None = None
     library_b_root: Path | None = None
-    fingerprint_a: dict[str, FileState] = field(default_factory=dict)
-    fingerprint_b: dict[str, FileState] = field(default_factory=dict)
+    fingerprint_a: dict[str, FileState] | None = None
+    fingerprint_b: dict[str, FileState] | None = None
 
-    def __init__(self, library_a_only=None, library_b_only=None, matches=None, library_a_root=None, library_b_root=None, fingerprint_a=None, fingerprint_b=None, *, laptop_only=None, phone_only=None):
+    def __init__(self, library_a_only=None, library_b_only=None, matches=None, library_a_root=None, library_b_root=None, fingerprint_a=_UNSET, fingerprint_b=_UNSET, *, laptop_only=None, phone_only=None):
         self.library_a_only = list(library_a_only if library_a_only is not None else (laptop_only or []))
         self.library_b_only = list(library_b_only if library_b_only is not None else (phone_only or []))
         self.matches = list(matches or [])
         self.library_a_root = library_a_root
         self.library_b_root = library_b_root
-        self.fingerprint_a = dict(fingerprint_a or {})
-        self.fingerprint_b = dict(fingerprint_b or {})
+        self.fingerprint_a = None if fingerprint_a is _UNSET else dict(fingerprint_a)
+        self.fingerprint_b = None if fingerprint_b is _UNSET else dict(fingerprint_b)
 
     @property
     def laptop_only(self) -> list[Track]:
