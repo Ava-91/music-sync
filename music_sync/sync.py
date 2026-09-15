@@ -22,11 +22,11 @@ class SafeExecutionResult:
 
     @property
     def status(self) -> str:
-        if self.failures and self.copied:
+        if (self.failures or self.blocked) and self.copied:
             return "PARTIAL"
         if self.failures:
             return "FAILED"
-        if self.blocked and not self.copied:
+        if self.blocked:
             return "BLOCKED"
         return "SUCCESS"
 
