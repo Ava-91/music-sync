@@ -34,3 +34,17 @@ def test_unreviewed_fuzzy_match_remains_unconfirmed():
     plan = apply_fuzzy_decisions(SyncPlan(matches=[match]), {})
     assert plan.matches == [match]
     assert plan.matches[0].confirmed is False
+
+
+def test_unreviewed_fuzzy_match_does_not_drop_existing_matches():
+    fuzzy_left = make_track("fuzzy.mp3", "laptop")
+    fuzzy_right = make_track("fuzzy-copy.mp3", "phone")
+    trusted_left = make_track("trusted.mp3", "laptop")
+    trusted_right = make_track("trusted-copy.mp3", "phone")
+    fuzzy = Match(fuzzy_left, fuzzy_right, 0.91, confirmed=False)
+    trusted = Match(trusted_left, trusted_right, 1.0, confirmed=True)
+
+    plan = apply_fuzzy_decisions(SyncPlan(matches=[trusted, fuzzy]), {})
+
+    assert plan.matches == [trusted, fuzzy]
+    assert plan.matches[1].confirmed is False
