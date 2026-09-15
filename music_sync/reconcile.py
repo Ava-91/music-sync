@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -9,6 +8,7 @@ from .backup import create_verified_backup
 from .freshness import validate_plan_freshness
 from .models import SyncPlan
 from .path_safety import validate_backup_root, validate_library_pair
+from .transaction import FileOperation, OperationKind, execute_transaction
 
 
 class ReconcileDecision(str, Enum):
@@ -26,10 +26,12 @@ class ReconcileResult:
     blocked: list[str] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
     backups: dict[str, Path] = field(default_factory=dict)
+    rolled_back: bool = False
+    rollback_failures: list[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        if self.failures and self.copied:
+        if self.rollback_failures:
             return "PARTIAL"
         if self.failures:
             return "FAILED"
@@ -52,7 +54,7 @@ def _key(prefix: str, path: Path) -> str:
 
 
 def _plan_operations(plan: SyncPlan, decisions: dict[str, ReconcileDecision]):
-    operations: list[tuple[Path, Path]] = []
+    operations: list[FileOperation] = []
     blocked: list[str] = []
     skipped: list[str] = []
 
@@ -61,7 +63,7 @@ def _plan_operations(plan: SyncPlan, decisions: dict[str, ReconcileDecision]):
         decision = decisions.get(key)
         if decision is ReconcileDecision.COPY_A_TO_B:
             relative = _relative(track.path, plan.library_a_root)
-            operations.append((track.path.resolve(), plan.library_b_root.resolve() / relative))
+            operations.append(FileOperation(OperationKind.COPY, track.path.resolve(), plan.library_b_root.resolve() / relative))
         elif decision is ReconcileDecision.SKIP:
             skipped.append(key)
         else:
@@ -72,7 +74,7 @@ def _plan_operations(plan: SyncPlan, decisions: dict[str, ReconcileDecision]):
         decision = decisions.get(key)
         if decision is ReconcileDecision.COPY_B_TO_A:
             relative = _relative(track.path, plan.library_b_root)
-            operations.append((track.path.resolve(), plan.library_a_root.resolve() / relative))
+            operations.append(FileOperation(OperationKind.COPY, track.path.resolve(), plan.library_a_root.resolve() / relative))
         elif decision is ReconcileDecision.SKIP:
             skipped.append(key)
         else:
@@ -87,11 +89,11 @@ def _plan_operations(plan: SyncPlan, decisions: dict[str, ReconcileDecision]):
         if decision is ReconcileDecision.KEEP_A:
             _relative(match.library_a.path, plan.library_a_root)
             _relative(match.library_b.path, plan.library_b_root)
-            operations.append((match.library_a.path.resolve(), match.library_b.path.resolve()))
+            operations.append(FileOperation(OperationKind.REPLACE, match.library_a.path.resolve(), match.library_b.path.resolve()))
         elif decision is ReconcileDecision.KEEP_B:
             _relative(match.library_b.path, plan.library_b_root)
             _relative(match.library_a.path, plan.library_a_root)
-            operations.append((match.library_b.path.resolve(), match.library_a.path.resolve()))
+            operations.append(FileOperation(OperationKind.REPLACE, match.library_b.path.resolve(), match.library_a.path.resolve()))
         elif decision is ReconcileDecision.SKIP:
             skipped.append(key)
         else:
@@ -111,18 +113,20 @@ def execute_reconcile(plan: SyncPlan, decisions: dict[str, ReconcileDecision], b
     if blocked or not operations:
         return result
 
-    destinations = [destination.resolve() for _, destination in operations]
+    destinations = [operation.destination.resolve() for operation in operations]
     if any(destination.is_relative_to(library_a) for destination in destinations):
         result.backups["library_a"] = create_verified_backup(library_a, backup_root).path
     if any(destination.is_relative_to(library_b) for destination in destinations):
         result.backups["library_b"] = create_verified_backup(library_b, backup_root).path
 
-    for source, destination in operations:
-        try:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-            result.copied.append((source, destination))
-        except OSError as exc:
-            result.failures.append(f"Could not apply {source} to {destination}: {exc}")
-
+    backup_map = {}
+    if "library_a" in result.backups:
+        backup_map[library_a] = result.backups["library_a"]
+    if "library_b" in result.backups:
+        backup_map[library_b] = result.backups["library_b"]
+    transaction = execute_transaction(operations, backup_map)
+    result.copied = [(operation.source, operation.destination) for operation in transaction.succeeded if operation.source]
+    result.failures.extend(transaction.failures)
+    result.rolled_back = transaction.rolled_back
+    result.rollback_failures.extend(transaction.rollback_failures)
     return result

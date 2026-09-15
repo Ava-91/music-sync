@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -10,6 +9,7 @@ from .direction import MasterLibrary, SyncDirection
 from .freshness import validate_plan_freshness
 from .models import Match, SyncPlan, Track
 from .path_safety import validate_backup_root, validate_library_pair
+from .transaction import FileOperation, OperationKind, execute_transaction
 
 
 class MirrorAction(str, Enum):
@@ -54,11 +54,12 @@ class MirrorResult:
     deleted: list[Path] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
     backup: Path | None = None
+    rolled_back: bool = False
+    rollback_failures: list[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        changed = bool(self.copied or self.replaced or self.deleted)
-        if self.failures and changed:
+        if self.rollback_failures:
             return "PARTIAL"
         if self.failures:
             return "FAILED"
@@ -129,22 +130,24 @@ def execute_mirror(
     destination = library_b if direction.master is MasterLibrary.LIBRARY_A else library_a
     backup = create_verified_backup(destination, backup_root).path
     result = MirrorResult(backup=backup)
-
+    operations = []
     for operation in preview.operations:
-        try:
-            if operation.action is MirrorAction.DELETE:
-                operation.destination.unlink()
-                result.deleted.append(operation.destination)
-            elif operation.action is MirrorAction.COPY:
-                assert operation.source is not None
-                operation.destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(operation.source, operation.destination)
-                result.copied.append((operation.source, operation.destination))
-            else:
-                assert operation.source is not None
-                shutil.copy2(operation.source, operation.destination)
-                result.replaced.append((operation.source, operation.destination))
-        except OSError as exc:
-            result.failures.append(f"Could not apply {operation.action.value} to {operation.destination}: {exc}")
+        kind = {
+            MirrorAction.COPY: OperationKind.COPY,
+            MirrorAction.REPLACE: OperationKind.REPLACE,
+            MirrorAction.DELETE: OperationKind.DELETE,
+        }[operation.action]
+        operations.append(FileOperation(kind, operation.source, operation.destination))
 
+    transaction = execute_transaction(operations, {destination: backup})
+    for operation in transaction.succeeded:
+        if operation.kind is OperationKind.COPY:
+            result.copied.append((operation.source, operation.destination))
+        elif operation.kind is OperationKind.REPLACE:
+            result.replaced.append((operation.source, operation.destination))
+        elif operation.kind is OperationKind.DELETE:
+            result.deleted.append(operation.destination)
+    result.failures.extend(transaction.failures)
+    result.rolled_back = transaction.rolled_back
+    result.rollback_failures.extend(transaction.rollback_failures)
     return result

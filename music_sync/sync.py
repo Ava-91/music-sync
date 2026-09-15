@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 from .backup import create_verified_backup
@@ -11,6 +10,7 @@ from .freshness import validate_plan_freshness
 from .models import SyncPlan
 from .path_safety import validate_backup_root, validate_library_pair
 from .review import ConflictChoice
+from .transaction import FileOperation, OperationKind, execute_transaction
 
 
 @dataclass(slots=True)
@@ -22,10 +22,12 @@ class SafeExecutionResult:
     blocked: list[str] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
     backup: Path | None = None
+    rolled_back: bool = False
+    rollback_failures: list[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        if (self.failures or self.blocked) and self.copied:
+        if self.rollback_failures:
             return "PARTIAL"
         if self.failures:
             return "FAILED"
@@ -73,7 +75,7 @@ def execute_safe(plan: SyncPlan, direction: SyncDirection, backup_root: Path) ->
 
     result = SafeExecutionResult()
     candidates = _source_only(plan, SyncDirection(source=source, destination=destination, master=direction.master))
-    planned: list[tuple[Path, Path]] = []
+    planned: list[FileOperation] = []
     for track in candidates:
         track_path = track.path.resolve()
         try:
@@ -85,20 +87,19 @@ def execute_safe(plan: SyncPlan, direction: SyncDirection, backup_root: Path) ->
         if target.exists():
             result.skipped.append(target)
             continue
-        planned.append((track_path, target))
+        planned.append(FileOperation(OperationKind.COPY, track_path, target))
 
+    if result.blocked:
+        return result
     if not planned:
         return result
 
     result.backup = make_backup(destination, backup_root)
-    for source_path, target in planned:
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, target)
-            result.copied.append((source_path, target))
-        except OSError as exc:
-            result.failures.append(f"Could not copy {source_path} to {target}: {exc}")
-
+    transaction = execute_transaction(planned, {destination: result.backup})
+    result.copied = [(operation.source, operation.destination) for operation in transaction.succeeded if operation.source]
+    result.failures.extend(transaction.failures)
+    result.rolled_back = transaction.rolled_back
+    result.rollback_failures.extend(transaction.rollback_failures)
     return result
 
 
