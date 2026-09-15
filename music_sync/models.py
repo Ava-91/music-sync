@@ -6,12 +6,14 @@ from typing import Literal
 
 Side = Literal["a", "b", "laptop", "phone"]
 
+
 @dataclass(slots=True)
 class FileState:
     relative_path: str
     size: int
     modified_ns: int
     file_hash: str | None = None
+
 
 @dataclass(slots=True)
 class Track:
@@ -28,13 +30,21 @@ class Track:
     artwork_hashes: tuple[str, ...] = ()
 
     @property
-    def artwork_count(self) -> int: return len(self.artwork_hashes)
+    def artwork_count(self) -> int:
+        return len(self.artwork_hashes) or (1 if self.artwork_hash else 0)
+
     @property
-    def display_title(self) -> str: return self.title or self.path.stem
+    def display_title(self) -> str:
+        return self.title or self.path.stem
+
     @property
-    def display_artist(self) -> str: return self.artist or "Unknown artist"
+    def display_artist(self) -> str:
+        return self.artist or "Unknown artist"
+
     @property
-    def display_album(self) -> str: return self.album or "Unknown album"
+    def display_album(self) -> str:
+        return self.album or "Unknown album"
+
 
 @dataclass(slots=True)
 class Match:
@@ -48,9 +58,13 @@ class Match:
     reasons: tuple[str, ...] = ()
 
     @property
-    def laptop(self) -> Track: return self.library_a
+    def laptop(self) -> Track:
+        return self.library_a
+
     @property
-    def phone(self) -> Track: return self.library_b
+    def phone(self) -> Track:
+        return self.library_b
+
 
 @dataclass(slots=True)
 class ScanResult:
@@ -60,7 +74,8 @@ class ScanResult:
     errors: list[str] = field(default_factory=list)
     fingerprint: dict[str, FileState] = field(default_factory=dict)
 
-@dataclass(slots=True)
+
+@dataclass(slots=True, init=False)
 class SyncPlan:
     library_a_only: list[Track] = field(default_factory=list)
     library_b_only: list[Track] = field(default_factory=list)
@@ -70,10 +85,23 @@ class SyncPlan:
     fingerprint_a: dict[str, FileState] = field(default_factory=dict)
     fingerprint_b: dict[str, FileState] = field(default_factory=dict)
 
+    def __init__(self, library_a_only=None, library_b_only=None, matches=None, library_a_root=None, library_b_root=None, fingerprint_a=None, fingerprint_b=None, *, laptop_only=None, phone_only=None):
+        self.library_a_only = list(library_a_only if library_a_only is not None else (laptop_only or []))
+        self.library_b_only = list(library_b_only if library_b_only is not None else (phone_only or []))
+        self.matches = list(matches or [])
+        self.library_a_root = library_a_root
+        self.library_b_root = library_b_root
+        self.fingerprint_a = dict(fingerprint_a or {})
+        self.fingerprint_b = dict(fingerprint_b or {})
+
     @property
-    def laptop_only(self) -> list[Track]: return self.library_a_only
+    def laptop_only(self) -> list[Track]:
+        return self.library_a_only
+
     @property
-    def phone_only(self) -> list[Track]: return self.library_b_only
+    def phone_only(self) -> list[Track]:
+        return self.library_b_only
+
 
 class SyncMode:
     SAFE = "safe"
