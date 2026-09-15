@@ -2,11 +2,24 @@ from pathlib import Path
 
 from music_sync.direction import MasterLibrary, SyncDirection
 from music_sync.models import Match, SyncPlan, Track
+from music_sync.scanner import current_fingerprint
 from music_sync.sync import execute_safe
 
 
 def make_direction(source: Path, destination: Path, master: MasterLibrary) -> SyncDirection:
     return SyncDirection(source=source, destination=destination, master=master)
+
+
+def with_fingerprints(plan: SyncPlan) -> SyncPlan:
+    return SyncPlan(
+        library_a_only=plan.library_a_only,
+        library_b_only=plan.library_b_only,
+        matches=plan.matches,
+        library_a_root=plan.library_a_root,
+        library_b_root=plan.library_b_root,
+        fingerprint_a=current_fingerprint(plan.library_a_root),
+        fingerprint_b=current_fingerprint(plan.library_b_root),
+    )
 
 
 def test_safe_sync_copies_missing_without_deleting_or_overwriting(tmp_path: Path):
@@ -18,11 +31,11 @@ def test_safe_sync_copies_missing_without_deleting_or_overwriting(tmp_path: Path
     (source / "new.mp3").write_bytes(b"new")
     (destination / "existing.mp3").write_bytes(b"keep")
 
-    plan = SyncPlan(
+    plan = with_fingerprints(SyncPlan(
         library_a_only=[Track(source / "new.mp3", "a")],
         library_a_root=source,
         library_b_root=destination,
-    )
+    ))
     result = execute_safe(plan, make_direction(source, destination, MasterLibrary.LIBRARY_A), backup_root)
 
     assert result.status == "SUCCESS"
@@ -40,11 +53,11 @@ def test_safe_sync_skips_existing_collision(tmp_path: Path):
     (source / "same.mp3").write_bytes(b"source")
     (destination / "same.mp3").write_bytes(b"destination")
 
-    plan = SyncPlan(
+    plan = with_fingerprints(SyncPlan(
         library_a_only=[Track(source / "same.mp3", "a")],
         library_a_root=source,
         library_b_root=destination,
-    )
+    ))
     result = execute_safe(plan, make_direction(source, destination, MasterLibrary.LIBRARY_A), backup_root)
 
     assert result.status == "SUCCESS"
@@ -65,7 +78,7 @@ def test_safe_sync_does_not_apply_unresolved_fuzzy_matches(tmp_path: Path):
     fuzzy_destination.write_bytes(b"other")
 
     match = Match(Track(fuzzy_source, "a"), Track(fuzzy_destination, "b"), 0.91, confirmed=False)
-    plan = SyncPlan(matches=[match], library_a_root=source, library_b_root=destination)
+    plan = with_fingerprints(SyncPlan(matches=[match], library_a_root=source, library_b_root=destination))
     result = execute_safe(plan, make_direction(source, destination, MasterLibrary.LIBRARY_A), backup_root)
 
     assert result.copied == []
@@ -82,11 +95,11 @@ def test_safe_sync_blocks_tracks_outside_source_root(tmp_path: Path):
     destination.mkdir()
     outside.write_bytes(b"outside")
 
-    plan = SyncPlan(
+    plan = with_fingerprints(SyncPlan(
         library_a_only=[Track(outside, "a")],
         library_a_root=source,
         library_b_root=destination,
-    )
+    ))
     result = execute_safe(plan, make_direction(source, destination, MasterLibrary.LIBRARY_A), backup_root)
 
     assert result.status == "BLOCKED"
