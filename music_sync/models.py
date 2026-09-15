@@ -4,14 +4,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+Side = Literal["a", "b", "laptop", "phone"]
 
-Side = Literal["laptop", "phone"]
+
+@dataclass(slots=True)
+class FileState:
+    relative_path: str
+    size: int
+    modified_ns: int
+    file_hash: str | None = None
 
 
 @dataclass(slots=True)
 class Track:
-    """A scanned audio file and the metadata needed for comparison."""
-
     path: Path
     side: Side
     title: str = ""
@@ -26,7 +31,7 @@ class Track:
 
     @property
     def artwork_count(self) -> int:
-        return len(self.artwork_hashes)
+        return len(self.artwork_hashes) or (1 if self.artwork_hash else 0)
 
     @property
     def display_title(self) -> str:
@@ -43,14 +48,22 @@ class Track:
 
 @dataclass(slots=True)
 class Match:
-    """A pair of tracks believed to represent the same song."""
-
-    laptop: Track
-    phone: Track
+    library_a: Track
+    library_b: Track
     confidence: float
     metadata_conflict: bool = False
     artwork_conflict: bool = False
     confirmed: bool = True
+    match_kind: str = "trusted"
+    reasons: tuple[str, ...] = ()
+
+    @property
+    def laptop(self) -> Track:
+        return self.library_a
+
+    @property
+    def phone(self) -> Track:
+        return self.library_b
 
 
 @dataclass(slots=True)
@@ -59,10 +72,38 @@ class ScanResult:
     root: Path
     tracks: list[Track] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    fingerprint: dict[str, FileState] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, init=False)
 class SyncPlan:
-    laptop_only: list[Track] = field(default_factory=list)
-    phone_only: list[Track] = field(default_factory=list)
+    library_a_only: list[Track] = field(default_factory=list)
+    library_b_only: list[Track] = field(default_factory=list)
     matches: list[Match] = field(default_factory=list)
+    library_a_root: Path | None = None
+    library_b_root: Path | None = None
+    fingerprint_a: dict[str, FileState] = field(default_factory=dict)
+    fingerprint_b: dict[str, FileState] = field(default_factory=dict)
+
+    def __init__(self, library_a_only=None, library_b_only=None, matches=None, library_a_root=None, library_b_root=None, fingerprint_a=None, fingerprint_b=None, *, laptop_only=None, phone_only=None):
+        self.library_a_only = list(library_a_only if library_a_only is not None else (laptop_only or []))
+        self.library_b_only = list(library_b_only if library_b_only is not None else (phone_only or []))
+        self.matches = list(matches or [])
+        self.library_a_root = library_a_root
+        self.library_b_root = library_b_root
+        self.fingerprint_a = dict(fingerprint_a or {})
+        self.fingerprint_b = dict(fingerprint_b or {})
+
+    @property
+    def laptop_only(self) -> list[Track]:
+        return self.library_a_only
+
+    @property
+    def phone_only(self) -> list[Track]:
+        return self.library_b_only
+
+
+class SyncMode:
+    SAFE = "safe"
+    MIRROR = "mirror"
+    RECONCILE = "reconcile"
