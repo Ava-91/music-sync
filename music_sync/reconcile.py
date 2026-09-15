@@ -22,6 +22,7 @@ class ReconcileDecision(str, Enum):
 @dataclass(slots=True)
 class ReconcileResult:
     copied: list[tuple[Path, Path]] = field(default_factory=list)
+    replaced: list[tuple[Path, Path]] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
     blocked: list[str] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
@@ -35,7 +36,7 @@ class ReconcileResult:
             return "PARTIAL"
         if self.failures:
             return "FAILED"
-        if self.blocked and not self.copied:
+        if self.blocked and not (self.copied or self.replaced):
             return "BLOCKED"
         if self.blocked:
             return "PARTIAL"
@@ -125,7 +126,8 @@ def execute_reconcile(plan: SyncPlan, decisions: dict[str, ReconcileDecision], b
     if "library_b" in result.backups:
         backup_map[library_b] = result.backups["library_b"]
     transaction = execute_transaction(operations, backup_map)
-    result.copied = [(operation.source, operation.destination) for operation in transaction.succeeded if operation.source]
+    result.copied = [(operation.source, operation.destination) for operation in transaction.succeeded if operation.kind is OperationKind.COPY and operation.source]
+    result.replaced = [(operation.source, operation.destination) for operation in transaction.succeeded if operation.kind is OperationKind.REPLACE and operation.source]
     result.failures.extend(transaction.failures)
     result.rolled_back = transaction.rolled_back
     result.rollback_failures.extend(transaction.rollback_failures)
