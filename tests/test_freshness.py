@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -56,7 +57,7 @@ def test_filesystem_change_invalidates_plan(tmp_path: Path, mutation: str):
 def test_missing_library_blocks_execution(tmp_path: Path):
     a, b = make_libraries(tmp_path)
     plan = make_plan(a, b)
-    b.rmdir()
+    shutil.rmtree(b)
     with pytest.raises(StalePlanError, match="unavailable"):
         validate_plan_freshness(plan)
 
