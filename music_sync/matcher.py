@@ -22,8 +22,13 @@ def _same_duration(a: Track, b: Track, tolerance: float = 2.0) -> bool:
     return a.duration is not None and b.duration is not None and abs(a.duration - b.duration) <= tolerance
 
 
+def _artwork_values(track: Track) -> tuple[str, ...]:
+    return track.artwork_hashes or ((track.artwork_hash,) if track.artwork_hash else ())
+
+
 def _artwork_conflict(a: Track, b: Track) -> bool:
-    return a.artwork_hashes != b.artwork_hashes and bool(a.artwork_hashes or b.artwork_hashes)
+    left, right = _artwork_values(a), _artwork_values(b)
+    return left != right and bool(left or right)
 
 
 def _metadata_conflict(a: Track, b: Track) -> bool:
@@ -47,10 +52,7 @@ def _make_match(a: Track, b: Track, confidence: float, confirmed: bool, kind: st
 def _fingerprint(result: ScanResult) -> dict[str, FileState]:
     data: dict[str, FileState] = {}
     for track in result.tracks:
-        try:
-            relative = str(track.path.resolve().relative_to(result.root.resolve()))
-        except ValueError:
-            relative = str(track.path.resolve())
+        relative = str(track.path.resolve().relative_to(result.root.resolve()))
         data[relative] = FileState(relative, track.size, track.modified_ns, track.file_hash)
     return data
 
@@ -58,54 +60,41 @@ def _fingerprint(result: ScanResult) -> dict[str, FileState]:
 def build_plan(a: ScanResult, b: ScanResult, threshold: float = 0.88) -> SyncPlan:
     """Build a conservative, library-agnostic reconciliation plan."""
     plan = SyncPlan(library_a_root=a.root.resolve(), library_b_root=b.root.resolve(), fingerprint_a=_fingerprint(a), fingerprint_b=_fingerprint(b))
-    used_b: set[int] = set()
-    matched_a: set[object] = set()
-
+    used_b: set[int] = set(); matched_a: set[object] = set()
     by_hash: dict[str, list[tuple[int, Track]]] = {}
     for i, track in enumerate(b.tracks):
-        if track.file_hash:
-            by_hash.setdefault(track.file_hash, []).append((i, track))
+        if track.file_hash: by_hash.setdefault(track.file_hash, []).append((i, track))
     for a_track in a.tracks:
         candidates = [x for x in by_hash.get(a_track.file_hash or "", []) if x[0] not in used_b]
         if a_track.file_hash and len(candidates) == 1:
-            i, b_track = candidates[0]
-            used_b.add(i); matched_a.add(a_track.path)
+            i, b_track = candidates[0]; used_b.add(i); matched_a.add(a_track.path)
             plan.matches.append(_make_match(a_track, b_track, 1.0, True, "hash"))
-
     by_key: dict[tuple[str, str, str], list[tuple[int, Track]]] = {}
     for i, track in enumerate(b.tracks):
-        if i not in used_b:
-            by_key.setdefault(track_key(track), []).append((i, track))
+        if i not in used_b: by_key.setdefault(track_key(track), []).append((i, track))
     for a_track in a.tracks:
         if a_track.path in matched_a: continue
         candidates = [x for x in by_key.get(track_key(a_track), []) if x[0] not in used_b]
         if len(candidates) == 1:
-            i, b_track = candidates[0]
-            used_b.add(i); matched_a.add(a_track.path)
+            i, b_track = candidates[0]; used_b.add(i); matched_a.add(a_track.path)
             plan.matches.append(_make_match(a_track, b_track, 1.0, True, "metadata"))
-
     by_name: dict[str, list[tuple[int, Track]]] = {}
     for i, track in enumerate(b.tracks):
-        if i not in used_b:
-            by_name.setdefault(normalize(track.path.stem), []).append((i, track))
+        if i not in used_b: by_name.setdefault(normalize(track.path.stem), []).append((i, track))
     for a_track in a.tracks:
         if a_track.path in matched_a: continue
         candidates = [x for x in by_name.get(normalize(a_track.path.stem), []) if x[0] not in used_b and (_same_duration(a_track, x[1]) or normalize(a_track.artist) == normalize(x[1].artist))]
         if len(candidates) == 1:
-            i, b_track = candidates[0]
-            used_b.add(i); matched_a.add(a_track.path)
+            i, b_track = candidates[0]; used_b.add(i); matched_a.add(a_track.path)
             plan.matches.append(_make_match(a_track, b_track, 0.98, True, "filename"))
-
     remaining = [(i, t) for i, t in enumerate(b.tracks) if i not in used_b]
     for a_track in a.tracks:
         if a_track.path in matched_a: continue
         ranked = sorted(((similarity(a_track, t), i, t) for i, t in remaining), reverse=True, key=lambda x: x[0])
         if ranked and ranked[0][0] >= threshold and (len(ranked) == 1 or ranked[0][0] - ranked[1][0] >= 0.03):
-            score, i, b_track = ranked[0]
-            used_b.add(i); matched_a.add(a_track.path)
+            score, i, b_track = ranked[0]; used_b.add(i); matched_a.add(a_track.path)
             remaining = [(j, t) for j, t in remaining if j != i]
             plan.matches.append(_make_match(a_track, b_track, score, False, "fuzzy"))
-        else:
-            plan.library_a_only.append(a_track)
+        else: plan.library_a_only.append(a_track)
     plan.library_b_only = [t for i, t in enumerate(b.tracks) if i not in used_b]
     return plan
