@@ -116,7 +116,7 @@ def execute_mirror(
     confirmation: str,
 ) -> MirrorResult:
     """Apply a destructive Mirror plan only after explicit `MIRROR` confirmation."""
-    if confirmation.strip().upper() != "MIRROR":
+    if confirmation != "MIRROR":
         raise MirrorConfirmationError("Mirror execution requires exact confirmation text: MIRROR")
 
     library_a, library_b = validate_library_pair(direction.source, direction.destination)
