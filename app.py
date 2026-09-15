@@ -3,257 +3,313 @@ from __future__ import annotations
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from music_sync.backup_ui import open_backup_manager
-from music_sync.conflict_ui import review_conflicts
-from music_sync.dry_run import summarize
+from music_sync.direction import MasterLibrary, SyncDirection
+from music_sync.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
+from music_sync.execution_report import ExecutionReport, report_from_mirror, report_from_reconcile, report_from_safe
 from music_sync.fuzzy_ui import apply_fuzzy_decisions, review_fuzzy_matches
 from music_sync.matcher import build_plan
-from music_sync.models import SyncPlan
-from music_sync.report import make_report, save_json
-from music_sync.scanner import scan_library
+from music_sync.models import SyncMode, SyncPlan
+from music_sync.mirror import MirrorConfirmationError, build_mirror_preview, execute_mirror
+from music_sync.path_safety import validate_library_pair
+from music_sync.reconcile import ReconcileDecision, execute_reconcile
 from music_sync.review import ConflictChoice
-from music_sync.sync import merge_with_conflicts
-
-DEFAULT_LAPTOP = r"E:\Ava files\ava music"
-DEFAULT_PHONE_COPY = r"E:\Ava files\phone music"
+from music_sync.scanner import scan_library
+from music_sync.settings import Settings, SettingsStore
+from music_sync.sync import execute_safe
 
 
 class MusicSyncApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("🎵 Ava Music Sync")
-        self.geometry("1160x760")
-        self.minsize(900, 620)
-        self.laptop_var = tk.StringVar(value=DEFAULT_LAPTOP)
-        self.phone_var = tk.StringVar(value=DEFAULT_PHONE_COPY)
-        self.status_var = tk.StringVar(value="Select your second library, then scan.")
+        self.title("music-sync")
+        self.geometry("1180x780")
+        self.minsize(940, 640)
+        self.settings_store = SettingsStore()
+        self.settings = self.settings_store.load()
         self.plan: SyncPlan | None = None
-        self.laptop_root: Path | None = None
-        self.phone_root: Path | None = None
-        self.scan_errors = 0
-        self.last_report: Path | None = None
-        self.scan_button: ttk.Button | None = None
-        self.review_conflicts_button: ttk.Button | None = None
-        self.review_fuzzy_button: ttk.Button | None = None
-        self.dry_run_button: ttk.Button | None = None
-        self.export_report_button: ttk.Button | None = None
-        self.backup_button: ttk.Button | None = None
-        self.merge_button: ttk.Button | None = None
+        self.library_a_root: Path | None = None
+        self.library_b_root: Path | None = None
+        self.last_report: ExecutionReport | None = None
         self.review_choices: dict[str, ConflictChoice] = {}
-        self.fuzzy_decisions: dict[str, bool] = {}
+        self.scan_errors = 0
+        self.library_a_var = tk.StringVar(value=self.settings.library_a)
+        self.library_b_var = tk.StringVar(value=self.settings.library_b)
+        self.master_var = tk.StringVar(value=self.settings.master or "library_a")
+        self.mode_var = tk.StringVar(value=self.settings.sync_mode)
+        self.backup_var = tk.StringVar(value=self.settings.backup_location)
+        self.status_var = tk.StringVar(value="Choose Library A and Library B to begin.")
         self._build_ui()
+        self._update_controls()
 
     def _build_ui(self) -> None:
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="🎵 Ava Music Sync", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        ttk.Label(frame, text="Compare two libraries, review conflicts and uncertain matches, then merge safely.").pack(anchor="w", pady=(2, 18))
-        self._path_row(frame, "💻 Library A", self.laptop_var)
-        self._path_row(frame, "📁 Library B", self.phone_var)
-
+        ttk.Label(frame, text="music-sync", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        ttk.Label(frame, text="Compare, review, preview, and synchronize two arbitrary music libraries.").pack(anchor="w", pady=(2, 18))
+        self._path_row(frame, "Library A", self.library_a_var)
+        self._path_row(frame, "Library B", self.library_b_var)
+        options = ttk.Frame(frame)
+        options.pack(fill="x", pady=8)
+        self._combo_row(options, "Master", self.master_var, ["library_a", "library_b"])
+        self._combo_row(options, "Mode", self.mode_var, [SyncMode.SAFE, SyncMode.RECONCILE, SyncMode.MIRROR])
+        self._path_row(options, "Backup location", self.backup_var, "Select backup folder")
         actions = ttk.Frame(frame)
         actions.pack(fill="x", pady=16)
-        self.scan_button = ttk.Button(actions, text="🔍 Scan & Preview", command=self.scan)
+        self.scan_button = ttk.Button(actions, text="Scan", command=self.scan)
         self.scan_button.pack(side="left")
-        self.review_conflicts_button = ttk.Button(actions, text="🖼️ Review Conflicts", command=self.review, state="disabled")
+        self.review_conflicts_button = ttk.Button(actions, text="Review conflicts", command=self.review_conflicts, state="disabled")
         self.review_conflicts_button.pack(side="left", padx=8)
-        self.review_fuzzy_button = ttk.Button(actions, text="🧠 Review Fuzzy Matches", command=self.review_fuzzy, state="disabled")
+        self.review_fuzzy_button = ttk.Button(actions, text="Review fuzzy", command=self.review_fuzzy, state="disabled")
         self.review_fuzzy_button.pack(side="left")
-        self.dry_run_button = ttk.Button(actions, text="👁️ Dry Run", command=self.dry_run, state="disabled")
+        self.dry_run_button = ttk.Button(actions, text="Dry run", command=self.dry_run, state="disabled")
         self.dry_run_button.pack(side="left", padx=8)
-        self.export_report_button = ttk.Button(actions, text="📄 Export Report", command=self.export_report, state="disabled")
-        self.export_report_button.pack(side="left")
-        self.backup_button = ttk.Button(actions, text="💾 Backups", command=self.open_backups, state="disabled")
-        self.backup_button.pack(side="left", padx=8)
-        self.merge_button = ttk.Button(actions, text="🔄 Merge Safely", command=self.merge, state="disabled")
-        self.merge_button.pack(side="left")
-
-        self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=20)
-        self.tree.heading("category", text="Category")
-        self.tree.heading("count", text="Count")
-        self.tree.heading("details", text="Details")
-        self.tree.column("category", width=270, anchor="w")
-        self.tree.column("count", width=90, anchor="center")
-        self.tree.column("details", width=680, anchor="w")
+        self.execute_button = ttk.Button(actions, text="Apply", command=self.execute, state="disabled")
+        self.execute_button.pack(side="left")
+        self.export_button = ttk.Button(actions, text="Export report", command=self.export_report, state="disabled")
+        self.export_button.pack(side="left", padx=8)
+        self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=21)
+        for column, title, width in (("category", "Category", 260), ("count", "Count", 90), ("details", "Details", 700)):
+            self.tree.heading(column, text=title)
+            self.tree.column(column, width=width, anchor="w")
         self.tree.pack(fill="both", expand=True)
         ttk.Label(frame, textvariable=self.status_var).pack(anchor="w", pady=(12, 0))
 
-    def _path_row(self, parent: ttk.Frame, label: str, variable: tk.StringVar) -> None:
+    def _path_row(self, parent: ttk.Frame, label: str, variable: tk.StringVar, browse_title: str = "Select music library") -> None:
         row = ttk.Frame(parent)
         row.pack(fill="x", pady=5)
-        ttk.Label(row, text=label, width=14).pack(side="left")
+        ttk.Label(row, text=label, width=16).pack(side="left")
         ttk.Entry(row, textvariable=variable).pack(side="left", fill="x", expand=True, padx=8)
-        ttk.Button(row, text="Browse", command=lambda: self.browse(variable)).pack(side="left")
+        ttk.Button(row, text="Browse", command=lambda: self.browse(variable, browse_title)).pack(side="left")
 
-    def browse(self, variable: tk.StringVar) -> None:
-        path = filedialog.askdirectory(title="Select music folder")
+    def _combo_row(self, parent: ttk.Frame, label: str, variable: tk.StringVar, values: list[str]) -> None:
+        row = ttk.Frame(parent)
+        row.pack(side="left", padx=(0, 18))
+        ttk.Label(row, text=label).pack(side="left", padx=(0, 6))
+        combo = ttk.Combobox(row, textvariable=variable, values=values, state="readonly", width=14)
+        combo.pack(side="left")
+        combo.bind("<<ComboboxSelected>>", lambda _event: self._save_settings())
+
+    def browse(self, variable: tk.StringVar, title: str) -> None:
+        path = filedialog.askdirectory(title=title)
         if path:
             variable.set(path)
+            self._save_settings()
+
+    def _save_settings(self) -> None:
+        try:
+            settings = Settings(
+                library_a=self.library_a_var.get().strip(), library_b=self.library_b_var.get().strip(),
+                master=self.master_var.get().strip(), sync_mode=self.mode_var.get().strip(),
+                backup_location=self.backup_var.get().strip(), fuzzy_threshold=self.settings.fuzzy_threshold,
+                conflict_defaults=self.settings.conflict_defaults, appearance=self.settings.appearance,
+            )
+            self.settings_store.save(settings)
+            self.settings = settings
+        except ValueError as exc:
+            messagebox.showerror("Invalid settings", str(exc), parent=self)
+
+    def _direction(self) -> SyncDirection:
+        if not self.library_a_root or not self.library_b_root:
+            raise ValueError("Scan both libraries before applying a plan.")
+        master = MasterLibrary.LIBRARY_A if self.master_var.get() == "library_a" else MasterLibrary.LIBRARY_B
+        return SyncDirection(self.library_a_root, self.library_b_root, master)
+
+    def _backup_root(self) -> Path:
+        value = self.backup_var.get().strip()
+        if not value:
+            raise ValueError("Choose a backup location before applying a modifying mode.")
+        return Path(value).expanduser()
 
     def _set_busy(self, busy: bool) -> None:
-        state = "disabled" if busy else "normal"
         if self.scan_button:
-            self.scan_button.configure(state=state)
+            self.scan_button.configure(state="disabled" if busy else "normal")
+        self._update_controls(busy)
+
+    def _update_controls(self, busy: bool = False) -> None:
         has_plan = self.plan is not None
-        for button in (self.review_conflicts_button, self.review_fuzzy_button, self.dry_run_button, self.export_report_button, self.backup_button):
+        fuzzy = has_plan and any(not match.confirmed for match in self.plan.matches)
+        conflicts = has_plan and any(match.metadata_conflict or match.artwork_conflict for match in self.plan.matches)
+        for button, enabled in ((self.review_conflicts_button, conflicts), (self.review_fuzzy_button, fuzzy), (self.dry_run_button, has_plan), (self.execute_button, has_plan), (self.export_button, self.last_report is not None)):
             if button:
-                button.configure(state="normal" if has_plan and not busy else "disabled")
-        if self.review_fuzzy_button and has_plan:
-            fuzzy_exists = any(not m.confirmed for m in self.plan.matches)
-            self.review_fuzzy_button.configure(state="normal" if fuzzy_exists and not busy else "disabled")
-        if self.merge_button:
-            can_merge = has_plan and not busy and self.plan and (self.plan.phone_only or self.plan.matches)
-            self.merge_button.configure(state="normal" if can_merge else "disabled")
+                button.configure(state="normal" if enabled and not busy else "disabled")
 
     def scan(self) -> None:
-        laptop_path = Path(self.laptop_var.get().strip()).expanduser()
-        phone_path = Path(self.phone_var.get().strip()).expanduser()
-        if not laptop_path.is_dir():
-            messagebox.showerror("Library A not found", f"Could not find:\n{laptop_path}")
-            return
-        if not phone_path.is_dir():
-            messagebox.showerror("Library B not found", f"Select the second music library.\n\nExpected example:\n{DEFAULT_PHONE_COPY}")
+        self._save_settings()
+        try:
+            library_a, library_b = validate_library_pair(self.library_a_var.get().strip(), self.library_b_var.get().strip())
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Invalid libraries", str(exc), parent=self)
             return
         self._set_busy(True)
         self.status_var.set("Scanning both libraries…")
 
         def worker() -> None:
-            library_a = scan_library(laptop_path, "laptop")
-            library_b = scan_library(phone_path, "phone")
-            plan = build_plan(library_a, library_b)
-            self.after(0, lambda: self._show_scan(laptop_path, phone_path, library_a, library_b, plan))
+            result_a = scan_library(library_a, "a")
+            result_b = scan_library(library_b, "b")
+            plan = build_plan(result_a, result_b, threshold=self.settings.fuzzy_threshold)
+            self.after(0, lambda: self._show_scan(library_a, library_b, result_a, result_b, plan))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _show_scan(self, laptop_path, phone_path, laptop, phone, plan: SyncPlan) -> None:
-        self.plan = plan
-        self.laptop_root = laptop_path
-        self.phone_root = phone_path
-        self.scan_errors = len(laptop.errors) + len(phone.errors)
+    def _show_scan(self, library_a: Path, library_b: Path, result_a, result_b, plan: SyncPlan) -> None:
+        self.plan, self.library_a_root, self.library_b_root = plan, library_a, library_b
+        self.scan_errors = len(result_a.errors) + len(result_b.errors)
         self.last_report = None
         self.review_choices = {}
-        self.fuzzy_decisions = {}
         for item in self.tree.get_children():
             self.tree.delete(item)
-        metadata_conflicts = sum(match.metadata_conflict for match in plan.matches)
-        artwork_conflicts = sum(match.artwork_conflict for match in plan.matches)
-        exact_matches = sum(1 for match in plan.matches if match.confirmed)
-        fuzzy_matches = len(plan.matches) - exact_matches
+        exact = sum(match.confirmed for match in plan.matches)
         rows = [
-            ("💻 Library A-only", len(plan.laptop_only), "Already present in Library A"),
-            ("📁 Library B-only", len(plan.phone_only), "Would be added to Library A"),
-            ("🟡 Matched", len(plan.matches), f"{exact_matches} exact/trusted, {fuzzy_matches} fuzzy/unconfirmed"),
-            ("⚠️ Metadata conflicts", metadata_conflicts, "Review before choosing a source"),
-            ("🖼️ Artwork conflicts", artwork_conflicts, "Compare embedded artwork before choosing a source"),
-            ("❗ Scan errors", self.scan_errors, "Unreadable files are never modified"),
+            ("Library A-only", len(plan.library_a_only), "Missing from Library B"),
+            ("Library B-only", len(plan.library_b_only), "Missing from Library A"),
+            ("Matches", len(plan.matches), f"{exact} confirmed, {len(plan.matches) - exact} fuzzy/unconfirmed"),
+            ("Metadata conflicts", sum(m.metadata_conflict for m in plan.matches), "Require explicit review"),
+            ("Artwork conflicts", sum(m.artwork_conflict for m in plan.matches), "Require explicit review"),
+            ("Scan errors", self.scan_errors, "Unreadable files are not modified"),
         ]
         for row in rows:
             self.tree.insert("", "end", values=row)
         self._set_busy(False)
-        self.status_var.set(f"Scan complete — {len(laptop.tracks)} + {len(phone.tracks)} tracks. Nothing was changed.")
+        self.status_var.set(f"Scan complete — {len(result_a.tracks)} + {len(result_b.tracks)} tracks. Nothing was changed.")
 
-    def dry_run(self) -> None:
+    def review_conflicts(self) -> None:
         if not self.plan:
             return
-        summary = summarize(self.plan, self.scan_errors)
-        messagebox.showinfo("Dry run — no files changed", f"READ-ONLY PREVIEW\n\nWould add: {summary.add}\nMatched: {summary.matched}\nFuzzy matches needing review: {summary.fuzzy}\nMetadata conflicts: {summary.metadata_conflicts}\nArtwork conflicts: {summary.artwork_conflicts}\nScan errors: {summary.scan_errors}\n\nNo files were created, replaced, deleted, or modified.")
-        self.status_var.set("Dry run complete — no files were changed.")
-
-    def review(self) -> None:
-        if not self.plan:
-            return
+        from music_sync.conflict_ui import review_conflicts
         conflicts = [m for m in self.plan.matches if m.metadata_conflict or m.artwork_conflict]
-        if not conflicts:
-            messagebox.showinfo("No conflicts", "No metadata or artwork conflicts were found.")
-            return
         choices = review_conflicts(self, conflicts)
-        if choices is None:
-            self.status_var.set("Conflict review cancelled. No files were changed.")
-            return
-        self.review_choices = choices
-        self.status_var.set(f"Conflict review saved — {len(choices)} decision(s).")
+        if choices is not None:
+            self.review_choices = choices
+            self.status_var.set(f"Saved {len(choices)} conflict decision(s).")
 
     def review_fuzzy(self) -> None:
         if not self.plan:
             return
         fuzzy = [m for m in self.plan.matches if not m.confirmed]
-        if not fuzzy:
-            messagebox.showinfo("No fuzzy matches", "There are no unconfirmed fuzzy matches.")
-            return
         decisions = review_fuzzy_matches(self, fuzzy)
+        if decisions is not None:
+            self.plan = apply_fuzzy_decisions(self.plan, decisions)
+            self.status_var.set("Fuzzy review saved. Rescan if the filesystem changes.")
+            self._update_controls()
+
+    def _reconcile_decisions(self) -> dict[str, ReconcileDecision] | None:
+        if not self.plan:
+            return None
+        decisions: dict[str, ReconcileDecision] = {}
+        for track in self.plan.library_a_only:
+            answer = messagebox.askyesnocancel("Reconcile A-only track", f"Copy to Library B?\n\n{track.path}\n\nYes = Copy A → B\nNo = Skip", parent=self)
+            if answer is None:
+                return None
+            decisions[f"a-only:{track.path}"] = ReconcileDecision.COPY_A_TO_B if answer else ReconcileDecision.SKIP
+        for track in self.plan.library_b_only:
+            answer = messagebox.askyesnocancel("Reconcile B-only track", f"Copy to Library A?\n\n{track.path}\n\nYes = Copy B → A\nNo = Skip", parent=self)
+            if answer is None:
+                return None
+            decisions[f"b-only:{track.path}"] = ReconcileDecision.COPY_B_TO_A if answer else ReconcileDecision.SKIP
+        for path, choice in self.review_choices.items():
+            decisions[f"match:{path}"] = {ConflictChoice.LAPTOP: ReconcileDecision.KEEP_A, ConflictChoice.PHONE: ReconcileDecision.KEEP_B, ConflictChoice.SKIP: ReconcileDecision.SKIP}[choice]
+        if any(not m.confirmed and f"match:{m.library_a.path}" not in decisions for m in self.plan.matches):
+            return None
+        return decisions
+
+    def dry_run(self) -> None:
+        if not self.plan:
+            return
+        try:
+            direction = self._direction()
+            mode = self.mode_var.get()
+            if mode == SyncMode.SAFE:
+                result = dry_run_safe(self.plan, direction)
+            elif mode == SyncMode.RECONCILE:
+                decisions = self._reconcile_decisions()
+                if decisions is None:
+                    raise ValueError("Every Reconcile item needs an explicit decision.")
+                result = dry_run_reconcile(self.plan, decisions, self._backup_root())
+            else:
+                result = dry_run_mirror(self.plan, direction)
+            messagebox.showinfo("Dry run — no files changed", f"Mode: {mode}\nStatus: {result.status}\nOperations: {len(result.operations)}\nSkipped: {len(result.skipped)}\nBlocked: {len(result.blocked)}\n\nNo library or backup files were modified.", parent=self)
+        except Exception as exc:
+            messagebox.showerror("Dry run blocked", str(exc), parent=self)
+
+    def execute(self) -> None:
+        if not self.plan:
+            return
+        mode = self.mode_var.get()
+        if mode == SyncMode.SAFE:
+            self._execute_safe()
+        elif mode == SyncMode.RECONCILE:
+            self._execute_reconcile()
+        else:
+            self._execute_mirror()
+
+    def _execute_safe(self) -> None:
+        try:
+            direction, backup = self._direction(), self._backup_root()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Safe mode blocked", str(exc), parent=self)
+            return
+        if not messagebox.askyesno("Apply Safe mode?", "Safe mode only adds missing files. It never deletes or overwrites existing destination files.\n\nCreate a verified backup and continue?", parent=self):
+            return
+        self._run_worker(lambda: report_from_safe(execute_safe(self.plan, direction, backup)))
+
+    def _execute_reconcile(self) -> None:
+        decisions = self._reconcile_decisions()
         if decisions is None:
-            self.status_var.set("Fuzzy review cancelled. Unconfirmed matches remain blocked from merge.")
+            messagebox.showwarning("Reconcile blocked", "Every missing, conflicting, or fuzzy item needs an explicit decision.", parent=self)
             return
-        self.fuzzy_decisions.update(decisions)
-        self.plan = apply_fuzzy_decisions(self.plan, decisions)
-        confirmed = sum(1 for m in self.plan.matches if m.confirmed)
-        self.status_var.set(f"Fuzzy review saved — {len(decisions)} decision(s), {confirmed} confirmed matches.")
-        self._set_busy(False)
+        try:
+            backup = self._backup_root()
+        except ValueError as exc:
+            messagebox.showerror("Reconcile blocked", str(exc), parent=self)
+            return
+        self._run_worker(lambda: report_from_reconcile(execute_reconcile(self.plan, decisions, backup)))
 
-    def export_report(self) -> None:
-        if not self.plan or not self.laptop_root or not self.phone_root:
+    def _execute_mirror(self) -> None:
+        try:
+            direction, backup = self._direction(), self._backup_root()
+            preview = build_mirror_preview(self.plan, direction)
+        except Exception as exc:
+            messagebox.showerror("Mirror blocked", str(exc), parent=self)
             return
-        destination = filedialog.asksaveasfilename(title="Export sync report", defaultextension=".json", filetypes=[("JSON report", "*.json")], initialfile="music-sync-report.json")
-        if not destination:
+        if preview.blocked:
+            messagebox.showwarning("Mirror blocked", "Resolve all fuzzy matches before Mirror execution.", parent=self)
             return
-        report = make_report(
-            library_a=self.laptop_root, library_b=self.phone_root,
-            added=len(self.plan.phone_only), replaced=0, skipped=0,
-            matched=len(self.plan.matches), fuzzy=sum(not m.confirmed for m in self.plan.matches),
-            metadata_conflicts=sum(m.metadata_conflict for m in self.plan.matches),
-            artwork_conflicts=sum(m.artwork_conflict for m in self.plan.matches),
-            scan_errors=self.scan_errors,
-        )
-        self.last_report = save_json(report, Path(destination))
-        self.status_var.set(f"Report exported to {self.last_report}")
+        messagebox.showinfo("Mirror preview", f"Copies: {len(preview.copies)}\nReplacements: {len(preview.replacements)}\nDeletions: {len(preview.deletions)}", parent=self)
+        confirmation = simpledialog.askstring("Confirm Mirror", "Type MIRROR exactly to apply these changes:", parent=self)
+        if confirmation is None:
+            return
+        self._run_worker(lambda: report_from_mirror(execute_mirror(self.plan, direction, backup, confirmation)))
 
-    def open_backups(self) -> None:
-        if self.laptop_root:
-            open_backup_manager(self, self.laptop_root)
-
-    def merge(self) -> None:
-        if not self.plan or not self.phone_root or not self.laptop_root:
-            return
-        unresolved = [m for m in self.plan.matches if not m.confirmed]
-        if unresolved:
-            answer = messagebox.askyesno("Review fuzzy matches first?", f"There are {len(unresolved)} unconfirmed fuzzy match(es).\n\nReview them before merging?")
-            if answer:
-                self.review_fuzzy()
-                return
-            messagebox.showwarning("Fuzzy matches still unresolved", "Please review every fuzzy match before merging.")
-            return
-        conflict_count = sum(m.metadata_conflict or m.artwork_conflict for m in self.plan.matches)
-        if conflict_count and not self.review_choices:
-            answer = messagebox.askyesno("Review conflicts first?", f"There are {conflict_count} metadata/artwork conflict(s).\n\nReview them before merging?\n\nChoosing No keeps the Library A version.")
-            if answer:
-                self.review()
-                return
-        count = len(self.plan.phone_only)
-        if not messagebox.askyesno("Create backup and merge?", f"This will:\n\n• Back up Library A first\n• Copy {count} Library B-only song(s)\n• Apply reviewed conflict choices\n• Keep Library A versions by default\n\nContinue?"):
-            return
+    def _run_worker(self, work) -> None:
         self._set_busy(True)
-        self.status_var.set("Creating backup and applying the merge plan…")
-        backup_root = self.laptop_root.parent / "music-sync-backups"
         def worker() -> None:
             try:
-                backup, copied, replaced, skipped = merge_with_conflicts(self.plan, self.laptop_root, self.phone_root, backup_root, self.review_choices)
-                self.after(0, lambda: self._merge_done(backup, copied, replaced, skipped))
+                report = work()
+                self.after(0, lambda: self._execution_done(report))
             except Exception as exc:
-                self.after(0, lambda: self._merge_failed(exc))
+                self.after(0, lambda: self._execution_failed(exc))
         threading.Thread(target=worker, daemon=True).start()
 
-    def _merge_done(self, backup: Path, copied, replaced, skipped) -> None:
+    def _execution_done(self, report: ExecutionReport) -> None:
+        self.last_report = report
         self._set_busy(False)
-        self.status_var.set(f"Merge complete — added {len(copied)}, replaced {len(replaced)}, skipped {len(skipped)}.")
-        messagebox.showinfo("Merge complete 🎵", f"Added {len(copied)} song(s).\nApplied {len(replaced)} Library B choice(s).\nSkipped {len(skipped)} conflict(s).\n\nBackup created at:\n{backup}\n\nThe merged Library A folder is ready to use.")
-        self.scan()
+        self.status_var.set(f"{report.mode.title()} finished with status {report.final_status.value}.")
+        messagebox.showinfo("Execution result", f"Mode: {report.mode}\nStatus: {report.final_status.value}\nAttempted: {report.attempted}\nSucceeded: {report.succeeded}\nFailed: {report.failed}\nSkipped: {report.skipped}\nRolled back: {report.rolled_back}", parent=self)
 
-    def _merge_failed(self, exc: Exception) -> None:
+    def _execution_failed(self, exc: Exception) -> None:
         self._set_busy(False)
-        self.status_var.set("Merge failed — no further changes were attempted.")
-        messagebox.showerror("Merge failed", str(exc))
+        self.status_var.set("Execution blocked or failed.")
+        messagebox.showerror("Execution failed", str(exc), parent=self)
+
+    def export_report(self) -> None:
+        if not self.last_report:
+            return
+        destination = filedialog.asksaveasfilename(title="Export execution report", defaultextension=".json", filetypes=[("JSON report", "*.json")], initialfile="music-sync-execution-report.json")
+        if destination:
+            path = self.last_report.save_json(Path(destination))
+            self.status_var.set(f"Report exported to {path}")
 
 
 if __name__ == "__main__":
