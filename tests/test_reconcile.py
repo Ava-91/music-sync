@@ -1,8 +1,5 @@
 from pathlib import Path
 
-import pytest
-
-from music_sync.direction import MasterLibrary
 from music_sync.models import Match, SyncPlan, Track
 from music_sync.reconcile import ReconcileDecision, execute_reconcile
 from music_sync.scanner import current_fingerprint
@@ -32,7 +29,6 @@ def test_a_only_requires_explicit_copy_decision(tmp_path: Path):
     assert blocked.status == "BLOCKED"
     assert not (b / "new.mp3").exists()
 
-    # The filesystem changed only by the test's deliberate source creation, so rescan.
     plan = fresh_plan(a, b, library_a_only=[Track(track, "a")])
     result = execute_reconcile(plan, {f"a-only:{track}": ReconcileDecision.COPY_A_TO_B}, backups)
     assert result.status == "SUCCESS"
@@ -57,11 +53,12 @@ def test_b_only_can_copy_back_to_a(tmp_path: Path):
 
 
 def test_conflict_keep_a_keep_b_and_skip_are_explicit(tmp_path: Path):
-    for decision, expected in [
-        (ReconcileDecision.KEEP_A, b"a"),
-        (ReconcileDecision.KEEP_B, b"b"),
-        (ReconcileDecision.SKIP, b"b"),
-    ]:
+    cases = [
+        (ReconcileDecision.KEEP_A, b"a", b"a"),
+        (ReconcileDecision.KEEP_B, b"a", b"b"),
+        (ReconcileDecision.SKIP, b"a", b"b"),
+    ]
+    for decision, expected_a, expected_b in cases:
         root = tmp_path / decision.value
         a = root / "A"
         b = root / "B"
@@ -77,8 +74,8 @@ def test_conflict_keep_a_keep_b_and_skip_are_explicit(tmp_path: Path):
 
         result = execute_reconcile(plan, {f"match:{a_track}": decision}, backups)
         assert result.status == "SUCCESS"
-        assert a_track.read_bytes() == expected if decision is not ReconcileDecision.KEEP_B else b"a"
-        assert b_track.read_bytes() == expected
+        assert a_track.read_bytes() == expected_a
+        assert b_track.read_bytes() == expected_b
 
 
 def test_unresolved_fuzzy_match_blocks_without_decision(tmp_path: Path):
