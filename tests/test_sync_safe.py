@@ -71,3 +71,25 @@ def test_safe_sync_does_not_apply_unresolved_fuzzy_matches(tmp_path: Path):
     assert result.copied == []
     assert not (destination / "uncertain.mp3").exists()
     assert result.backup is None
+
+
+def test_safe_sync_blocks_tracks_outside_source_root(tmp_path: Path):
+    source = tmp_path / "A"
+    destination = tmp_path / "B"
+    outside = tmp_path / "outside.mp3"
+    backup_root = tmp_path / "Backups"
+    source.mkdir()
+    destination.mkdir()
+    outside.write_bytes(b"outside")
+
+    plan = SyncPlan(
+        library_a_only=[Track(outside, "a")],
+        library_a_root=source,
+        library_b_root=destination,
+    )
+    result = execute_safe(plan, make_direction(source, destination, MasterLibrary.LIBRARY_A), backup_root)
+
+    assert result.status == "BLOCKED"
+    assert result.blocked
+    assert result.backup is None
+    assert not any(destination.iterdir())
