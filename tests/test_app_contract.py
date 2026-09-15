@@ -15,6 +15,7 @@ def test_app_uses_generic_v1_components():
         "SettingsStore",
         "MasterLibrary",
         "SyncMode",
+        "build_health_report",
         "execute_safe",
         "execute_reconcile",
         "execute_mirror",
