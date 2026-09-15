@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shutil
 
 import pytest
@@ -46,9 +47,7 @@ def test_filesystem_change_invalidates_plan(tmp_path: Path, mutation: str):
         target.write_bytes(b"one plus more")
     else:
         stat = target.stat()
-        target.touch()
-        if target.stat().st_mtime_ns == stat.st_mtime_ns:
-            target.touch()
+        os.utime(target, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
 
     with pytest.raises(StalePlanError, match="Scan both libraries again"):
         validate_plan_freshness(plan)
