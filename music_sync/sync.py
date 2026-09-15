@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from .backup import create_verified_backup
 from .direction import SyncDirection
 from .freshness import validate_plan_freshness
 from .models import SyncPlan
@@ -34,17 +35,12 @@ class SafeExecutionResult:
 
 
 def make_backup(root: Path, backup_root: Path) -> Path:
-    """Create a timestamped copy of a library before changing it."""
+    """Create and verify a timestamped copy of a library before changing it."""
     root = root.resolve()
     if not root.is_dir():
         raise FileNotFoundError(f"Library not found: {root}")
     backup_root = validate_backup_root(backup_root, (root,))
-    backup_root.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    destination = backup_root / f"music_backup_{timestamp}"
-    destination.mkdir(parents=True, exist_ok=False)
-    shutil.copytree(root, destination, dirs_exist_ok=True)
-    return destination
+    return create_verified_backup(root, backup_root).path
 
 
 def unique_destination(destination: Path) -> Path:
