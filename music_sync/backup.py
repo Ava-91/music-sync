@@ -14,12 +14,24 @@ class BackupVerificationError(RuntimeError):
     """Raised when a backup does not exactly match the source snapshot."""
 
 
+class RestoreConfirmationError(RuntimeError):
+    """Raised when restore is not explicitly confirmed."""
+
+
 @dataclass(frozen=True, slots=True)
 class BackupInfo:
     path: Path
     backup_id: str
     file_count: int
     size_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class RestoreResult:
+    restored: bool
+    recovered: bool
+    safety_backup: Path | None
+    error: str | None = None
 
 
 def _sha256(path: Path) -> str:
@@ -45,6 +57,17 @@ def _manifest_for(root: Path) -> dict[str, dict[str, int | str]]:
     return manifest
 
 
+def _load_manifest(backup: Path) -> tuple[str, dict[str, dict[str, int | str]]]:
+    manifest_path = backup / MANIFEST_NAME
+    if not manifest_path.is_file():
+        raise BackupVerificationError(f"Backup manifest is missing: {manifest_path}")
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return str(payload["backup_id"]), payload["files"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise BackupVerificationError(f"Backup manifest is invalid: {manifest_path}") from exc
+
+
 def _write_manifest(root: Path, backup_id: str, entries: dict[str, dict[str, int | str]]) -> None:
     payload = {
         "format": 1,
@@ -55,21 +78,24 @@ def _write_manifest(root: Path, backup_id: str, entries: dict[str, dict[str, int
     (root / MANIFEST_NAME).write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def verify_backup_contents(backup: Path) -> BackupInfo:
+    """Verify a backup against its own manifest without requiring the original source."""
+    backup = backup.resolve()
+    backup_id, expected = _load_manifest(backup)
+    actual = _manifest_for(backup)
+    if set(expected) != set(actual):
+        raise BackupVerificationError("Backup contents do not match the stored manifest.")
+    for relative, entry in expected.items():
+        if actual[relative] != entry:
+            raise BackupVerificationError(f"Backup verification failed for {relative}.")
+    return BackupInfo(backup, backup_id, len(actual), sum(int(item["size"]) for item in actual.values()))
+
+
 def verify_backup(source: Path, backup: Path) -> BackupInfo:
     """Verify a backup against the source using file sets, sizes, mtimes, and SHA-256."""
     source = source.resolve()
     backup = backup.resolve()
-    manifest_path = backup / MANIFEST_NAME
-    if not manifest_path.is_file():
-        raise BackupVerificationError(f"Backup manifest is missing: {manifest_path}")
-
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        entries = payload["files"]
-        backup_id = str(payload["backup_id"])
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise BackupVerificationError(f"Backup manifest is invalid: {manifest_path}") from exc
-
+    backup_id, entries = _load_manifest(backup)
     source_entries = _manifest_for(source)
     backup_entries = _manifest_for(backup)
     if set(source_entries) != set(entries) or set(source_entries) != set(backup_entries):
@@ -103,3 +129,49 @@ def create_verified_backup(source: Path, backup_root: Path) -> BackupInfo:
     except Exception:
         shutil.rmtree(destination, ignore_errors=True)
         raise
+
+
+def _restore_directory(target: Path, backup: Path) -> None:
+    for child in target.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    for child in backup.iterdir():
+        if child.name == MANIFEST_NAME:
+            continue
+        destination = target / child.name
+        if child.is_dir():
+            shutil.copytree(child, destination)
+        else:
+            shutil.copy2(child, destination)
+
+
+def restore_verified_backup(
+    backup: Path,
+    target: Path,
+    safety_backup_root: Path,
+    confirmation: str,
+) -> RestoreResult:
+    """Restore a verified backup only after exact RESTORE confirmation."""
+    if confirmation != "RESTORE":
+        raise RestoreConfirmationError("Restore requires exact confirmation text: RESTORE")
+
+    backup = backup.resolve()
+    target = target.resolve()
+    if not target.is_dir():
+        raise FileNotFoundError(f"Restore target is not an existing directory: {target}")
+    verify_backup_contents(backup)
+    safety = create_verified_backup(target, safety_backup_root).path
+
+    try:
+        _restore_directory(target, backup)
+        verify_backup(target, backup)
+        return RestoreResult(True, True, safety)
+    except Exception as exc:
+        try:
+            _restore_directory(target, safety)
+            verify_backup(target, safety)
+            return RestoreResult(False, True, safety, str(exc))
+        except Exception as recovery_exc:
+            return RestoreResult(False, False, safety, f"Restore failed: {exc}; recovery failed: {recovery_exc}")
