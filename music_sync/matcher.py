@@ -4,12 +4,13 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
-from .models import Match, ScanResult, SyncPlan, Track
+from .models import FileState, Match, ScanResult, SyncPlan, Track
 
 
 def normalize(value: str) -> str:
     value = unicodedata.normalize("NFKD", value).casefold()
-    value = re.sub(r"[^a-z0-9]+", " ", value)
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^\w]+", " ", value, flags=re.UNICODE)
     return " ".join(value.split())
 
 
@@ -22,11 +23,7 @@ def _same_duration(a: Track, b: Track, tolerance: float = 2.0) -> bool:
 
 
 def _artwork_conflict(a: Track, b: Track) -> bool:
-    # Missing artwork on either side is also actionable: one library has an
-    # artwork payload while the other does not.
-    if a.artwork_hashes != b.artwork_hashes:
-        return bool(a.artwork_hashes or b.artwork_hashes)
-    return False
+    return a.artwork_hashes != b.artwork_hashes and bool(a.artwork_hashes or b.artwork_hashes)
 
 
 def _metadata_conflict(a: Track, b: Track) -> bool:
@@ -35,8 +32,7 @@ def _metadata_conflict(a: Track, b: Track) -> bool:
 
 
 def similarity(a: Track, b: Track) -> float:
-    """Return a 0..1 similarity score for review-only fuzzy matching."""
-    title_score = SequenceMatcher(None, normalize(a.title or a.path.stem), normalize(b.title or b.path.stem)).ratio()
+    title_score = SequenceMatcher(None, normalize(a.display_title), normalize(b.display_title)).ratio()
     name_score = SequenceMatcher(None, normalize(a.path.stem), normalize(b.path.stem)).ratio()
     artist_score = SequenceMatcher(None, normalize(a.artist), normalize(b.artist)).ratio() if a.artist or b.artist else 1.0
     album_score = SequenceMatcher(None, normalize(a.album), normalize(b.album)).ratio() if a.album or b.album else 1.0
@@ -44,90 +40,72 @@ def similarity(a: Track, b: Track) -> float:
     return 0.45 * title_score + 0.15 * name_score + 0.20 * artist_score + 0.10 * album_score + 0.10 * duration_score
 
 
-def _make_match(laptop: Track, phone: Track, confidence: float, confirmed: bool) -> Match:
-    return Match(
-        laptop=laptop,
-        phone=phone,
-        confidence=confidence,
-        metadata_conflict=_metadata_conflict(laptop, phone),
-        artwork_conflict=_artwork_conflict(laptop, phone),
-        confirmed=confirmed,
-    )
+def _make_match(a: Track, b: Track, confidence: float, confirmed: bool, kind: str) -> Match:
+    return Match(a, b, confidence, _metadata_conflict(a, b), _artwork_conflict(a, b), confirmed, kind)
 
 
-def build_plan(laptop: ScanResult, phone: ScanResult, threshold: float = 0.88) -> SyncPlan:
-    """Build a non-destructive merge plan using content identity first."""
-    plan = SyncPlan()
-    used_phone: set[int] = set()
-    matched_laptop: set[object] = set()
+def _fingerprint(result: ScanResult) -> dict[str, FileState]:
+    data: dict[str, FileState] = {}
+    for track in result.tracks:
+        try:
+            relative = str(track.path.resolve().relative_to(result.root.resolve()))
+        except ValueError:
+            relative = str(track.path.resolve())
+        data[relative] = FileState(relative, track.size, track.modified_ns, track.file_hash)
+    return data
 
-    phone_by_hash: dict[str, list[tuple[int, Track]]] = {}
-    for index, track in enumerate(phone.tracks):
+
+def build_plan(a: ScanResult, b: ScanResult, threshold: float = 0.88) -> SyncPlan:
+    """Build a conservative, library-agnostic reconciliation plan."""
+    plan = SyncPlan(library_a_root=a.root.resolve(), library_b_root=b.root.resolve(), fingerprint_a=_fingerprint(a), fingerprint_b=_fingerprint(b))
+    used_b: set[int] = set()
+    matched_a: set[object] = set()
+
+    by_hash: dict[str, list[tuple[int, Track]]] = {}
+    for i, track in enumerate(b.tracks):
         if track.file_hash:
-            phone_by_hash.setdefault(track.file_hash, []).append((index, track))
+            by_hash.setdefault(track.file_hash, []).append((i, track))
+    for a_track in a.tracks:
+        candidates = [x for x in by_hash.get(a_track.file_hash or "", []) if x[0] not in used_b]
+        if a_track.file_hash and len(candidates) == 1:
+            i, b_track = candidates[0]
+            used_b.add(i); matched_a.add(a_track.path)
+            plan.matches.append(_make_match(a_track, b_track, 1.0, True, "hash"))
 
-    for laptop_track in laptop.tracks:
-        if not laptop_track.file_hash:
-            continue
-        candidate = next((item for item in phone_by_hash.get(laptop_track.file_hash, []) if item[0] not in used_phone), None)
-        if candidate is None:
-            continue
-        index, phone_track = candidate
-        used_phone.add(index)
-        matched_laptop.add(laptop_track.path)
-        plan.matches.append(_make_match(laptop_track, phone_track, 1.0, True))
-
-    phone_by_key: dict[tuple[str, str, str], list[tuple[int, Track]]] = {}
-    for index, track in enumerate(phone.tracks):
-        if index not in used_phone:
-            phone_by_key.setdefault(track_key(track), []).append((index, track))
-
-    for laptop_track in laptop.tracks:
-        if laptop_track.path in matched_laptop:
-            continue
-        candidate = next(((i, t) for i, t in phone_by_key.get(track_key(laptop_track), []) if i not in used_phone), None)
-        if candidate is None:
-            continue
-        index, phone_track = candidate
-        used_phone.add(index)
-        matched_laptop.add(laptop_track.path)
-        plan.matches.append(_make_match(laptop_track, phone_track, 1.0, True))
-
-    phone_by_name: dict[str, list[tuple[int, Track]]] = {}
-    for index, track in enumerate(phone.tracks):
-        if index not in used_phone:
-            phone_by_name.setdefault(normalize(track.path.stem), []).append((index, track))
-
-    for laptop_track in laptop.tracks:
-        if laptop_track.path in matched_laptop:
-            continue
-        candidates = [
-            (i, t) for i, t in phone_by_name.get(normalize(laptop_track.path.stem), [])
-            if i not in used_phone and (_same_duration(laptop_track, t) or normalize(laptop_track.artist) == normalize(t.artist))
-        ]
+    by_key: dict[tuple[str, str, str], list[tuple[int, Track]]] = {}
+    for i, track in enumerate(b.tracks):
+        if i not in used_b:
+            by_key.setdefault(track_key(track), []).append((i, track))
+    for a_track in a.tracks:
+        if a_track.path in matched_a: continue
+        candidates = [x for x in by_key.get(track_key(a_track), []) if x[0] not in used_b]
         if len(candidates) == 1:
-            index, phone_track = candidates[0]
-            used_phone.add(index)
-            matched_laptop.add(laptop_track.path)
-            plan.matches.append(_make_match(laptop_track, phone_track, 0.98, True))
+            i, b_track = candidates[0]
+            used_b.add(i); matched_a.add(a_track.path)
+            plan.matches.append(_make_match(a_track, b_track, 1.0, True, "metadata"))
 
-    remaining_phone = [(i, t) for i, t in enumerate(phone.tracks) if i not in used_phone]
-    for laptop_track in laptop.tracks:
-        if laptop_track.path in matched_laptop:
-            continue
-        best: tuple[float, int, Track] | None = None
-        for index, phone_track in remaining_phone:
-            score = similarity(laptop_track, phone_track)
-            if score >= threshold and (best is None or score > best[0]):
-                best = (score, index, phone_track)
-        if best is not None:
-            score, index, phone_track = best
-            used_phone.add(index)
-            remaining_phone = [(i, t) for i, t in remaining_phone if i != index]
-            matched_laptop.add(laptop_track.path)
-            plan.matches.append(_make_match(laptop_track, phone_track, score, False))
+    by_name: dict[str, list[tuple[int, Track]]] = {}
+    for i, track in enumerate(b.tracks):
+        if i not in used_b:
+            by_name.setdefault(normalize(track.path.stem), []).append((i, track))
+    for a_track in a.tracks:
+        if a_track.path in matched_a: continue
+        candidates = [x for x in by_name.get(normalize(a_track.path.stem), []) if x[0] not in used_b and (_same_duration(a_track, x[1]) or normalize(a_track.artist) == normalize(x[1].artist))]
+        if len(candidates) == 1:
+            i, b_track = candidates[0]
+            used_b.add(i); matched_a.add(a_track.path)
+            plan.matches.append(_make_match(a_track, b_track, 0.98, True, "filename"))
+
+    remaining = [(i, t) for i, t in enumerate(b.tracks) if i not in used_b]
+    for a_track in a.tracks:
+        if a_track.path in matched_a: continue
+        ranked = sorted(((similarity(a_track, t), i, t) for i, t in remaining), reverse=True, key=lambda x: x[0])
+        if ranked and ranked[0][0] >= threshold and (len(ranked) == 1 or ranked[0][0] - ranked[1][0] >= 0.03):
+            score, i, b_track = ranked[0]
+            used_b.add(i); matched_a.add(a_track.path)
+            remaining = [(j, t) for j, t in remaining if j != i]
+            plan.matches.append(_make_match(a_track, b_track, score, False, "fuzzy"))
         else:
-            plan.laptop_only.append(laptop_track)
-
-    plan.phone_only = [t for i, t in enumerate(phone.tracks) if i not in used_phone]
+            plan.library_a_only.append(a_track)
+    plan.library_b_only = [t for i, t in enumerate(b.tracks) if i not in used_b]
     return plan
