@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .direction import SyncDirection
+from .freshness import validate_plan_freshness
 from .models import SyncPlan
 from .path_safety import validate_backup_root, validate_library_pair
 from .review import ConflictChoice
@@ -72,6 +73,7 @@ def execute_safe(plan: SyncPlan, direction: SyncDirection, backup_root: Path) ->
     """Copy only source-only tracks without deleting or overwriting destination files."""
     source, destination = validate_library_pair(direction.source, direction.destination)
     validate_backup_root(backup_root, (destination,))
+    validate_plan_freshness(plan)
 
     result = SafeExecutionResult()
     candidates = _source_only(plan, SyncDirection(source=source, destination=destination, master=direction.master))
