@@ -105,7 +105,7 @@ def review_fuzzy_matches(parent: tk.Misc, matches: list[Match]) -> dict[str, boo
 
 
 def apply_fuzzy_decisions(plan: SyncPlan, decisions: dict[str, bool]) -> SyncPlan:
-    """Convert reviewed fuzzy suggestions into confirmed matches or phone-only tracks."""
+    """Apply explicit fuzzy decisions while preserving unresolved matches and plan metadata."""
     remaining_matches: list[Match] = []
     phone_only = list(plan.phone_only)
     for match in plan.matches:
@@ -118,4 +118,19 @@ def apply_fuzzy_decisions(plan: SyncPlan, decisions: dict[str, bool]) -> SyncPla
             remaining_matches.append(match)
         elif decision is False:
             phone_only.append(match.phone)
-    return SyncPlan(laptop_only=list(plan.laptop_only), phone_only=phone_only, matches=remaining_matches)
+        else:
+            remaining_matches.append(match)
+
+    kwargs = {
+        "laptop_only": list(plan.laptop_only),
+        "phone_only": phone_only,
+        "matches": remaining_matches,
+    }
+    if hasattr(plan, "library_a_root"):
+        kwargs.update(
+            library_a_root=plan.library_a_root,
+            library_b_root=plan.library_b_root,
+            fingerprint_a=plan.fingerprint_a,
+            fingerprint_b=plan.fingerprint_b,
+        )
+    return SyncPlan(**kwargs)
