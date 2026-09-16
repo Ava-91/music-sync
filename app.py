@@ -8,12 +8,13 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from music_sync.direction import MasterLibrary, SyncDirection
 from music_sync.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
 from music_sync.execution_report import ExecutionReport, report_from_mirror, report_from_reconcile, report_from_safe
+from music_sync.first_run import FirstRunWizard, is_first_run
 from music_sync.fuzzy_ui import apply_fuzzy_decisions, review_fuzzy_matches
 from music_sync.health import build_health_report
 from music_sync.matcher import build_plan
 from music_sync.models import SyncMode, SyncPlan
 from music_sync.mirror import build_mirror_preview, execute_mirror
-from music_sync.path_safety import validate_library_pair
+from music_sync.path_safety import validate_backup_root, validate_library_pair
 from music_sync.reconcile import ReconcileDecision, execute_reconcile
 from music_sync.review import ConflictChoice
 from music_sync.scanner import scan_library
@@ -45,6 +46,27 @@ class MusicSyncApp(tk.Tk):
         self.status_var = tk.StringVar(value="Choose Library A and Library B to begin.")
         self._build_ui()
         self._update_controls()
+        if is_first_run(self.settings):
+            self.after_idle(self._run_first_run)
+
+    def _run_first_run(self) -> None:
+        wizard = FirstRunWizard(self, self.settings)
+        self.wait_window(wizard)
+        if wizard.result is None:
+            self.status_var.set("Setup skipped — choose Library A and Library B when you are ready.")
+            return
+        try:
+            self.settings_store.save(wizard.result)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Setup could not be saved", str(exc), parent=self)
+            return
+        self.settings = wizard.result
+        self.library_a_var.set(self.settings.library_a)
+        self.library_b_var.set(self.settings.library_b)
+        self.master_var.set(self.settings.master)
+        self.mode_var.set(self.settings.sync_mode)
+        self.backup_var.set(self.settings.backup_location)
+        self.status_var.set("Setup saved — ready to scan. Nothing has been changed in either library.")
 
     def _build_ui(self) -> None:
         frame = ttk.Frame(self, padding=20)
@@ -120,7 +142,7 @@ class MusicSyncApp(tk.Tk):
         value = self.backup_var.get().strip()
         if not value:
             raise ValueError("Choose a backup location before applying a modifying mode.")
-        return Path(value).expanduser()
+        return validate_backup_root(value, (self.library_a_root, self.library_b_root)) if self.library_a_root and self.library_b_root else Path(value).expanduser()
 
     def _set_busy(self, busy: bool) -> None:
         self.scan_button.configure(state="disabled" if busy else "normal")
@@ -273,7 +295,7 @@ class MusicSyncApp(tk.Tk):
             return
         try:
             backup = self._backup_root()
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             messagebox.showerror("Reconcile blocked", str(exc), parent=self)
             return
         self._run_worker(lambda: report_from_reconcile(execute_reconcile(self.plan, decisions, backup)))
