@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from music_sync.matcher import build_plan, normalize
 from music_sync.models import ScanResult, Track
 from music_sync.scanner import scan_library
@@ -41,12 +39,12 @@ def test_zero_byte_audio_is_reported_not_raised(tmp_path: Path):
 def test_read_only_audio_is_not_modified(tmp_path: Path):
     audio = tmp_path / "readonly.mp3"
     audio.write_bytes(b"invalid")
-    before_mode = audio.stat().st_mode
     audio.chmod(0o444)
+    before_mode = audio.stat().st_mode
     try:
         result = scan_library(tmp_path, "a")
         assert result.tracks == []
-        assert audio.stat().st_mode == (before_mode | 0o444)
+        assert audio.stat().st_mode == before_mode
     finally:
         audio.chmod(0o644)
 
@@ -71,6 +69,7 @@ def test_scan_reports_file_read_failure_without_stopping_other_files(tmp_path: P
 
     assert any("first.mp3" in error for error in result.errors)
     assert not any(track.path.name == "first.mp3" for track in result.tracks)
+    assert any(track.path.name == "second.mp3" for track in result.tracks)
 
 
 def test_same_hash_is_exact_identity_even_with_different_paths(tmp_path: Path):
