@@ -36,14 +36,37 @@ jobs:
       - name: Build Windows application
         run: python -m PyInstaller --clean --noconfirm music_sync.spec
 
-      - name: Verify executable exists
+      - name: Verify executable exists and version metadata
         shell: pwsh
         run: |
           $exe = "dist\music-sync.exe"
           if (-not (Test-Path $exe -PathType Leaf)) {
             throw "Expected executable was not produced: $exe"
           }
+          $info = (Get-Item $exe).VersionInfo
+          if ($info.FileVersion -notlike "1.0.0.0*") {
+            throw "Unexpected executable file version: $($info.FileVersion)"
+          }
           Get-Item $exe | Select-Object FullName, Length, LastWriteTime
+          $info | Select-Object FileVersion, ProductVersion, ProductName
+
+      - name: Smoke-test executable startup
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist\music-sync.exe").Path
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+            Start-Sleep -Seconds 5
+            if ($process.HasExited) {
+              throw "music-sync.exe exited during startup with code $($process.ExitCode)."
+            }
+            Write-Host "music-sync.exe remained running for the startup smoke-test window."
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
