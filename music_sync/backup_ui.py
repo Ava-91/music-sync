@@ -5,6 +5,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .backups import BackupInfo, list_backups, restore_backup
+from .display import display_path
 
 
 def _format_size(value: int) -> str:
@@ -28,6 +29,7 @@ class BackupManagerDialog(tk.Toplevel):
         self.target = target
         self.backup_root = backup_root
         self.backups: list[BackupInfo] = []
+        self.restored = False
         self._build()
         self.refresh()
 
@@ -35,7 +37,7 @@ class BackupManagerDialog(tk.Toplevel):
         root = ttk.Frame(self, padding=18)
         root.pack(fill="both", expand=True)
         ttk.Label(root, text="💾 Backup Manager", font=("Segoe UI", 16, "bold")).pack(anchor="w")
-        ttk.Label(root, text=f"Backups: {self.backup_root}", wraplength=700).pack(anchor="w", pady=(4, 12))
+        ttk.Label(root, text=f"Backups: {display_path(self.backup_root)}", wraplength=700).pack(anchor="w", pady=(4, 12))
         columns = ("created", "files", "size", "path")
         self.tree = ttk.Treeview(root, columns=columns, show="headings", height=15)
         for column, title, width in (("created", "Created", 150), ("files", "Files", 70), ("size", "Size", 90), ("path", "Location", 380)):
@@ -53,7 +55,7 @@ class BackupManagerDialog(tk.Toplevel):
         for item in self.tree.get_children():
             self.tree.delete(item)
         for backup in self.backups:
-            self.tree.insert("", "end", values=(backup.created_at.strftime("%Y-%m-%d %H:%M:%S"), backup.file_count, _format_size(backup.size_bytes), str(backup.path)))
+            self.tree.insert("", "end", values=(backup.created_at.strftime("%Y-%m-%d %H:%M:%S"), backup.file_count, _format_size(backup.size_bytes), display_path(backup.path)))
 
     def restore(self) -> None:
         selection = self.tree.selection()
@@ -73,9 +75,12 @@ class BackupManagerDialog(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror("Restore failed", str(exc), parent=self)
             return
+        self.restored = True
         messagebox.showinfo("Restore complete", f"Backup restored.\n\nYour previous library was protected at:\n{protection}", parent=self)
         self.refresh()
 
 
-def open_backup_manager(parent: tk.Misc, target: Path) -> None:
-    BackupManagerDialog(parent, target, target.parent / "music-sync-backups")
+def open_backup_manager(parent: tk.Misc, target: Path, backup_root: Path) -> BackupManagerDialog:
+    dialog = BackupManagerDialog(parent, target, backup_root)
+    parent.wait_window(dialog)
+    return dialog

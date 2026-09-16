@@ -5,6 +5,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from music_sync.backup_ui import open_backup_manager
 from music_sync.direction import MasterLibrary, SyncDirection
 from music_sync.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
 from music_sync.execution_report import ExecutionReport, report_from_mirror, report_from_reconcile, report_from_safe
@@ -94,6 +95,10 @@ class MusicSyncApp(tk.Tk):
         self.execute_button.pack(side="left")
         self.export_button = ttk.Button(actions, text="Export report", command=self.export_report, state="disabled")
         self.export_button.pack(side="left", padx=8)
+        self.backups_a_button = ttk.Button(actions, text="Backups A", command=lambda: self.open_backups(self.library_a_var), state="normal" if self.library_a_var.get().strip() else "disabled")
+        self.backups_a_button.pack(side="left", padx=8)
+        self.backups_b_button = ttk.Button(actions, text="Backups B", command=lambda: self.open_backups(self.library_b_var), state="normal" if self.library_b_var.get().strip() else "disabled")
+        self.backups_b_button.pack(side="left")
         self.tree = ttk.Treeview(frame, columns=("category", "count", "details"), show="headings", height=24)
         for column, title, width in (("category", "Category", 280), ("count", "Count", 100), ("details", "Details", 680)):
             self.tree.heading(column, text=title)
@@ -121,6 +126,7 @@ class MusicSyncApp(tk.Tk):
         if path:
             variable.set(path)
             self._save_settings()
+            self._update_backup_buttons()
 
     def _save_settings(self) -> None:
         settings = Settings(
@@ -131,6 +137,43 @@ class MusicSyncApp(tk.Tk):
         )
         self.settings_store.save(settings)
         self.settings = settings
+
+    def _update_backup_buttons(self) -> None:
+        self.backups_a_button.configure(state="normal" if self.library_a_var.get().strip() else "disabled")
+        self.backups_b_button.configure(state="normal" if self.library_b_var.get().strip() else "disabled")
+
+    def open_backups(self, variable: tk.StringVar) -> None:
+        target_text = variable.get().strip()
+        backup_text = self.backup_var.get().strip()
+        if not target_text:
+            messagebox.showwarning("Backup Manager", "Choose a library first.", parent=self)
+            return
+        if not backup_text:
+            messagebox.showwarning("Backup Manager", "Choose a backup location first.", parent=self)
+            return
+        target = Path(target_text).expanduser()
+        backup_root = Path(backup_text).expanduser()
+        if not target.is_dir():
+            messagebox.showerror("Backup Manager", f"Library does not exist or is not a directory:\n{target}", parent=self)
+            return
+        try:
+            validate_backup_root(backup_root, (target,))
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Backup Manager", str(exc), parent=self)
+            return
+        dialog = open_backup_manager(self, target, backup_root)
+        if dialog.restored:
+            self.plan = None
+            self.scan_a = None
+            self.scan_b = None
+            self.library_a_root = None
+            self.library_b_root = None
+            self.last_report = None
+            self.health = None
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            self._update_controls()
+            self.status_var.set("Backup restored. The previous synchronization plan was discarded; scan again before applying changes.")
 
     def _direction(self) -> SyncDirection:
         if not self.library_a_root or not self.library_b_root:
@@ -154,6 +197,8 @@ class MusicSyncApp(tk.Tk):
         conflicts = has_plan and any(match.metadata_conflict or match.artwork_conflict for match in self.plan.matches)
         for button, enabled in ((self.review_conflicts_button, conflicts), (self.review_fuzzy_button, fuzzy), (self.dry_run_button, has_plan), (self.execute_button, has_plan), (self.export_button, self.last_report is not None)):
             button.configure(state="normal" if enabled and not busy else "disabled")
+        if hasattr(self, "backups_a_button"):
+            self._update_backup_buttons()
 
     def _refresh_health(self) -> None:
         if self.scan_a is None or self.scan_b is None:
