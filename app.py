@@ -236,10 +236,13 @@ class MusicSyncApp(tk.Tk):
         self._set_busy(True)
         self.status_var.set("Scanning both libraries…")
         def worker() -> None:
-            result_a = scan_library(library_a, "a")
-            result_b = scan_library(library_b, "b")
-            plan = build_plan(result_a, result_b, threshold=self.settings.fuzzy_threshold)
-            self.after(0, lambda: self._show_scan(library_a, library_b, result_a, result_b, plan))
+            try:
+                result_a = scan_library(library_a, "a")
+                result_b = scan_library(library_b, "b")
+                plan = build_plan(result_a, result_b, threshold=self.settings.fuzzy_threshold)
+                self.after(0, lambda: self._show_scan(library_a, library_b, result_a, result_b, plan))
+            except Exception as exc:
+                self.after(0, lambda: self._scan_failed(exc))
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_scan(self, library_a: Path, library_b: Path, result_a, result_b, plan: SyncPlan) -> None:
@@ -251,6 +254,18 @@ class MusicSyncApp(tk.Tk):
         self._refresh_health()
         self._set_busy(False)
         self.status_var.set(f"Scan complete — {len(result_a.tracks)} + {len(result_b.tracks)} tracks. Nothing was changed.")
+
+    def _scan_failed(self, exc: Exception) -> None:
+        """Surface scan worker exceptions and restore a usable UI state."""
+        self.plan = None
+        self.scan_a = None
+        self.scan_b = None
+        self.last_report = None
+        self.review_choices = {}
+        self._set_busy(False)
+        self._refresh_health()
+        self.status_var.set("Scan failed. Libraries were not changed.")
+        messagebox.showerror("Scan failed", str(exc), parent=self)
 
     def review_conflicts(self) -> None:
         if not self.plan:
