@@ -1,4 +1,5 @@
 from pathlib import Path
+import wave
 
 from music_sync.matcher import build_plan, normalize
 from music_sync.models import ScanResult, Track
@@ -51,9 +52,13 @@ def test_read_only_audio_is_not_modified(tmp_path: Path):
 
 def test_scan_reports_file_read_failure_without_stopping_other_files(tmp_path: Path, monkeypatch):
     first = tmp_path / "first.mp3"
-    second = tmp_path / "second.mp3"
+    second = tmp_path / "second.wav"
     first.write_bytes(b"one")
-    second.write_bytes(b"two")
+    with wave.open(str(second), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(8000)
+        handle.writeframes(b"\x00\x00")
 
     from music_sync import scanner
 
@@ -69,7 +74,7 @@ def test_scan_reports_file_read_failure_without_stopping_other_files(tmp_path: P
 
     assert any("first.mp3" in error for error in result.errors)
     assert not any(track.path.name == "first.mp3" for track in result.tracks)
-    assert any(track.path.name == "second.mp3" for track in result.tracks)
+    assert any(track.path.name == "second.wav" for track in result.tracks)
 
 
 def test_same_hash_is_exact_identity_even_with_different_paths(tmp_path: Path):
