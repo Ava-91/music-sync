@@ -45,9 +45,9 @@ def _library_health(scan: ScanResult) -> LibraryHealth:
         track_count=count,
         unreadable_files=len(scan.errors),
         complete_metadata=complete,
-        metadata_completeness_pct=(complete / count * 100.0) if count else 100.0,
+        metadata_completeness_pct=(complete * 100.0 / count) if count else 100.0,
         artwork_tracks=artwork,
-        artwork_coverage_pct=(artwork / count * 100.0) if count else 100.0,
+        artwork_coverage_pct=(artwork * 100.0 / count) if count else 100.0,
         duplicate_groups=duplicate_groups,
         duplicate_tracks=duplicate_tracks,
     )
