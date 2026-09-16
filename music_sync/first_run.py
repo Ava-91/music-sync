@@ -94,6 +94,7 @@ class FirstRunWizard(tk.Toplevel):
         row.pack(fill="x", pady=8)
         ttk.Label(row, text=label, width=20).pack(side="left")
         value = tk.StringVar(value=getattr(self.state, attribute))
+        value.trace_add("write", lambda *_args: setattr(self.state, attribute, value.get()))
         entry = ttk.Entry(row, textvariable=value)
         entry.pack(side="left", fill="x", expand=True, padx=8)
         entry.focus_set()
