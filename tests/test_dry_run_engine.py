@@ -55,6 +55,7 @@ def test_reconcile_dry_run_is_read_only(tmp_path: Path):
     left.write_bytes(b"a")
     right.write_bytes(b"b")
     match = Match(Track(left, "a", file_hash="a"), Track(right, "b", file_hash="b"), 1.0, metadata_conflict=True)
+    assert match.metadata_conflict is True
     plan = fresh_plan(a, b, matches=[match])
     before_a = snapshot(a)
     before_b = snapshot(b)
