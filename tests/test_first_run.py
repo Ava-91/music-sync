@@ -88,6 +88,19 @@ def test_first_run_rejects_missing_library(tmp_path: Path):
         state.validate()
 
 
+def test_first_run_rejects_invalid_mode_and_master(tmp_path: Path):
+    a = tmp_path / "A"
+    b = tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    invalid_mode = FirstRunState(library_a=str(a), library_b=str(b), sync_mode="unknown", backup_location=str(tmp_path / "backup"))
+    with pytest.raises(ValueError, match="valid sync mode"):
+        invalid_mode.validate()
+    invalid_master = FirstRunState(library_a=str(a), library_b=str(b), master="unknown", backup_location=str(tmp_path / "backup"))
+    with pytest.raises(ValueError, match="valid master"):
+        invalid_master.validate()
+
+
 def test_app_integrates_first_run_without_developer_defaults():
     source = Path("app.py").read_text(encoding="utf-8")
     assert "FirstRunWizard" in source
