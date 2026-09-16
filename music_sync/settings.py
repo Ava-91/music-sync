@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .models import SyncMode
+
+PORTABLE_MARKER = ".music-sync-portable"
 
 
 @dataclass(slots=True)
@@ -60,7 +63,28 @@ class SettingsStore:
         return self.path
 
 
+def application_directory(executable_path: str | Path | None = None) -> Path:
+    """Return the directory that should contain portable configuration."""
+    if executable_path is not None:
+        return Path(executable_path).expanduser().resolve().parent
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def portable_config_dir(application_path: str | Path | None = None) -> Path:
+    """Return the portable configuration directory beside the application."""
+    return application_directory(application_path) / "config"
+
+
+def is_portable_mode(application_path: str | Path | None = None) -> bool:
+    """Portable mode is opt-in through a marker beside the application."""
+    return (application_directory(application_path) / PORTABLE_MARKER).is_file()
+
+
 def default_config_dir() -> Path:
+    if is_portable_mode():
+        return portable_config_dir()
     if os.name == "nt":
         appdata = os.environ.get("APPDATA")
         if appdata:
