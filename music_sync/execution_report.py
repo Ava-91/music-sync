@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .display import display_path
+
 
 class ReportStatus(str, Enum):
     SUCCESS = "SUCCESS"
@@ -56,10 +58,10 @@ def report_from_safe(result) -> ExecutionReport:
         succeeded=len(result.copied),
         failed=len(result.failures),
         skipped=len(result.skipped),
-        copied=[f"{source} -> {destination}" for source, destination in result.copied],
+        copied=[f"{display_path(source)} -> {display_path(destination)}" for source, destination in result.copied],
         conflicts=list(result.blocked),
         errors=list(result.failures) + list(result.rollback_failures),
-        backups=[str(result.backup)] if result.backup else [],
+        backups=[display_path(result.backup)] if result.backup else [],
         rolled_back=result.rolled_back,
         rollback_failures=list(result.rollback_failures),
     )
@@ -75,11 +77,11 @@ def report_from_reconcile(result) -> ExecutionReport:
         succeeded=len(result.copied) + len(result.replaced),
         failed=len(result.failures),
         skipped=len(result.skipped),
-        copied=[f"{source} -> {destination}" for source, destination in result.copied],
-        replaced=[f"{source} -> {destination}" for source, destination in result.replaced],
+        copied=[f"{display_path(source)} -> {display_path(destination)}" for source, destination in result.copied],
+        replaced=[f"{display_path(source)} -> {display_path(destination)}" for source, destination in result.replaced],
         conflicts=blocked,
         errors=list(result.failures) + list(result.rollback_failures),
-        backups=[str(path) for path in result.backups.values()],
+        backups=[display_path(path) for path in result.backups.values()],
         rolled_back=result.rolled_back,
         rollback_failures=list(result.rollback_failures),
     )
@@ -93,20 +95,20 @@ def report_from_mirror(result) -> ExecutionReport:
         attempted=len(result.copied) + len(result.replaced) + len(result.deleted) + len(result.failures),
         succeeded=len(result.copied) + len(result.replaced) + len(result.deleted),
         failed=len(result.failures),
-        copied=[f"{source} -> {destination}" for source, destination in result.copied],
-        replaced=[f"{source} -> {destination}" for source, destination in result.replaced],
-        deleted=[str(path) for path in result.deleted],
+        copied=[f"{display_path(source)} -> {display_path(destination)}" for source, destination in result.copied],
+        replaced=[f"{display_path(source)} -> {display_path(destination)}" for source, destination in result.replaced],
+        deleted=[display_path(path) for path in result.deleted],
         errors=list(result.failures) + list(result.rollback_failures),
-        backups=[str(result.backup)] if result.backup else [],
+        backups=[display_path(result.backup)] if result.backup else [],
         rolled_back=result.rolled_back,
         rollback_failures=list(result.rollback_failures),
     )
 
 
 def report_from_transaction(result, mode: str = "transaction") -> ExecutionReport:
-    copied = [f"{operation.source} -> {operation.destination}" for operation in result.succeeded if operation.source and operation.kind.value == "copy"]
-    replaced = [f"{operation.source} -> {operation.destination}" for operation in result.succeeded if operation.source and operation.kind.value == "replace"]
-    deleted = [str(operation.destination) for operation in result.succeeded if operation.kind.value == "delete"]
+    copied = [f"{display_path(operation.source)} -> {display_path(operation.destination)}" for operation in result.succeeded if operation.source and operation.kind.value == "copy"]
+    replaced = [f"{display_path(operation.source)} -> {display_path(operation.destination)}" for operation in result.succeeded if operation.source and operation.kind.value == "replace"]
+    deleted = [display_path(operation.destination) for operation in result.succeeded if operation.kind.value == "delete"]
     return ExecutionReport(
         mode=mode,
         final_status=ReportStatus(result.status),

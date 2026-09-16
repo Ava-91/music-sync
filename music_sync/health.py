@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from .display import display_path
 from .models import ScanResult, SyncPlan
 
 
@@ -38,7 +39,7 @@ def _library_health(scan: ScanResult) -> LibraryHealth:
     hashes: dict[str, list[str]] = defaultdict(list)
     for track in scan.tracks:
         if track.file_hash:
-            hashes[track.file_hash].append(str(track.path))
+            hashes[track.file_hash].append(display_path(track.path))
     duplicate_groups = tuple(sorted(tuple(sorted(paths)) for paths in hashes.values() if len(paths) > 1))
     duplicate_tracks = sum(len(group) for group in duplicate_groups)
     return LibraryHealth(
