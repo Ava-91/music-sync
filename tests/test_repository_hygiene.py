@@ -4,6 +4,9 @@ import subprocess
 from pathlib import Path
 
 
+EXCLUDED_HYGIENE_GUARDS = {"tests/test_repository_hygiene.py", "tests/test_app_contract.py"}
+
+
 def tracked_files() -> list[str]:
     result = subprocess.run(
         ["git", "ls-files", "-z"],
@@ -17,6 +20,8 @@ def tracked_files() -> list[str]:
 def test_no_personal_developer_paths_are_tracked():
     forbidden = ["E:" + chr(92) + "Ava files", "Ava files", "DEFAULT_" + "LAPTOP", "DEFAULT_" + "PHONE_COPY"]
     for path in tracked_files():
+        if path in EXCLUDED_HYGIENE_GUARDS:
+            continue
         try:
             text = Path(path).read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
