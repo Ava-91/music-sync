@@ -92,8 +92,8 @@ class SyncPlan:
         self.matches = list(matches or [])
         self.library_a_root = library_a_root
         self.library_b_root = library_b_root
-        self.fingerprint_a = None if fingerprint_a is _UNSET else dict(fingerprint_a)
-        self.fingerprint_b = None if fingerprint_b is _UNSET else dict(fingerprint_b)
+        self.fingerprint_a = None if fingerprint_a is _UNSET or fingerprint_a is None else dict(fingerprint_a)
+        self.fingerprint_b = None if fingerprint_b is _UNSET or fingerprint_b is None else dict(fingerprint_b)
 
     @property
     def laptop_only(self) -> list[Track]:
