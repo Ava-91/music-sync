@@ -33,10 +33,10 @@ class FuzzyReviewDialog(tk.Toplevel):
 
         columns = ttk.Frame(root)
         columns.pack(fill="both", expand=True)
-        self.laptop = self._panel(columns, "Library A candidate")
-        self.laptop.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        self.phone = self._panel(columns, "Library B candidate")
-        self.phone.pack(side="left", fill="both", expand=True, padx=(8, 0))
+        self.panel_a = self._panel(columns, "Library A candidate")
+        self.panel_a.pack(side="left", fill="both", expand=True, padx=(0, 8))
+        self.panel_b = self._panel(columns, "Library B candidate")
+        self.panel_b.pack(side="left", fill="both", expand=True, padx=(8, 0))
 
         actions = ttk.Frame(root)
         actions.pack(fill="x", pady=18)
@@ -72,12 +72,12 @@ class FuzzyReviewDialog(tk.Toplevel):
         if details.conflicts:
             reason_text += "\nConflicts: " + " • ".join(details.conflicts)
         self.explanation.configure(text=reason_text)
-        self._populate(self.laptop, match.laptop)
-        self._populate(self.phone, match.phone)
+        self._populate(self.panel_a, match.library_a)
+        self._populate(self.panel_b, match.library_b)
 
     def choose(self, same: bool) -> None:
         match = self.matches[self.index]
-        self.decisions[str(match.laptop.path)] = same
+        self.decisions[str(match.library_a.path)] = same
         if self.index < len(self.matches) - 1:
             self.index += 1
             self._show_current()
@@ -105,32 +105,34 @@ def review_fuzzy_matches(parent: tk.Misc, matches: list[Match]) -> dict[str, boo
 
 
 def apply_fuzzy_decisions(plan: SyncPlan, decisions: dict[str, bool]) -> SyncPlan:
-    """Apply explicit fuzzy decisions while preserving unresolved matches and plan metadata."""
+    """Apply explicit fuzzy decisions while preserving unresolved matches and plan metadata.
+
+    Rejecting a fuzzy match means the two tracks are different songs. Both must remain
+    independently represented so Mirror cannot treat the surviving side as deleteable.
+    """
     remaining_matches: list[Match] = []
-    phone_only = list(plan.phone_only)
+    library_a_only = list(plan.library_a_only)
+    library_b_only = list(plan.library_b_only)
     for match in plan.matches:
         if match.confirmed:
             remaining_matches.append(match)
             continue
-        decision = decisions.get(str(match.laptop.path))
+        decision = decisions.get(str(match.library_a.path))
         if decision is True:
             match.confirmed = True
             remaining_matches.append(match)
         elif decision is False:
-            phone_only.append(match.phone)
+            library_a_only.append(match.library_a)
+            library_b_only.append(match.library_b)
         else:
             remaining_matches.append(match)
 
-    kwargs = {
-        "laptop_only": list(plan.laptop_only),
-        "phone_only": phone_only,
-        "matches": remaining_matches,
-    }
-    if hasattr(plan, "library_a_root"):
-        kwargs.update(
-            library_a_root=plan.library_a_root,
-            library_b_root=plan.library_b_root,
-            fingerprint_a=plan.fingerprint_a,
-            fingerprint_b=plan.fingerprint_b,
-        )
-    return SyncPlan(**kwargs)
+    return SyncPlan(
+        library_a_only=library_a_only,
+        library_b_only=library_b_only,
+        matches=remaining_matches,
+        library_a_root=plan.library_a_root,
+        library_b_root=plan.library_b_root,
+        fingerprint_a=plan.fingerprint_a,
+        fingerprint_b=plan.fingerprint_b,
+    )

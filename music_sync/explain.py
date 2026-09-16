@@ -17,8 +17,13 @@ class MatchExplanation:
     conflicts: tuple[str, ...]
 
 
+def _artwork_values(track: Track) -> tuple[str, ...]:
+    """Same representation the matcher uses for artwork comparison."""
+    return track.artwork_hashes or ((track.artwork_hash,) if track.artwork_hash else ())
+
+
 def explain_match(match: Match) -> MatchExplanation:
-    left, right = match.laptop, match.phone
+    left, right = match.library_a, match.library_b
     reasons: list[str] = []
     conflicts: list[str] = []
 
@@ -32,17 +37,22 @@ def explain_match(match: Match) -> MatchExplanation:
         if left.duration is not None and right.duration is not None:
             delta = abs(left.duration - right.duration)
             reasons.append(f"Duration difference: {delta:.2f}s")
+        name_score = SequenceMatcher(None, normalize(left.path.stem), normalize(right.path.stem)).ratio()
+        if name_score >= 0.8:
+            reasons.append(f"Filename similarity: {name_score:.0%}")
 
     for label, a, b in (("Title", left.title, right.title), ("Artist", left.artist, right.artist), ("Album", left.album, right.album)):
         if a and b and normalize(a) != normalize(b):
             conflicts.append(f"{label} differs")
-    if left.artwork_hashes != right.artwork_hashes:
-        if left.artwork_hashes and right.artwork_hashes:
+
+    left_art, right_art = _artwork_values(left), _artwork_values(right)
+    if left_art != right_art:
+        if left_art and right_art:
             conflicts.append("Embedded artwork differs")
-        elif left.artwork_hashes:
-            conflicts.append("Phone is missing embedded artwork")
+        elif left_art:
+            conflicts.append("Library B is missing embedded artwork")
         else:
-            conflicts.append("Laptop is missing embedded artwork")
+            conflicts.append("Library A is missing embedded artwork")
 
     identity = "Exact match" if match.confirmed and match.confidence >= 1.0 else "Confirmed match" if match.confirmed else "Fuzzy match — review required"
     return MatchExplanation(match.confidence, identity, tuple(reasons), tuple(conflicts))
