@@ -39,7 +39,7 @@ jobs:
       - name: Verify executable exists
         shell: pwsh
         run: |
-          $exe = "dist\music-sync\music-sync.exe"
+          $exe = "dist\music-sync.exe"
           if (-not (Test-Path $exe -PathType Leaf)) {
             throw "Expected executable was not produced: $exe"
           }
@@ -49,5 +49,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: music-sync-windows-${{ github.sha }}
-          path: dist/music-sync/
+          path: dist/music-sync.exe
           if-no-files-found: error
