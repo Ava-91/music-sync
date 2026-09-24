@@ -105,7 +105,8 @@ def test_app_integrates_first_run_without_developer_defaults():
     source = Path("app.py").read_text(encoding="utf-8")
     assert "FirstRunWizard" in source
     assert "is_first_run" in source
-    assert "self.after_idle(self._run_first_run)" in source
+    assert "self.after(100, self._run_first_run)" in source
     assert "E:\\Ava files" not in source
     assert "DEFAULT_LAPTOP" not in source
     assert "DEFAULT_PHONE_COPY" not in source
+

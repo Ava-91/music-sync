@@ -48,7 +48,7 @@ class MusicSyncApp(tk.Tk):
         self._build_ui()
         self._update_controls()
         if is_first_run(self.settings):
-            self.after_idle(self._run_first_run)
+            self.after(100, self._run_first_run)
 
     def _run_first_run(self) -> None:
         wizard = FirstRunWizard(self, self.settings)
