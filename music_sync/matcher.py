@@ -36,17 +36,91 @@ def _metadata_conflict(a: Track, b: Track) -> bool:
     return any(x and y and normalize(x) != normalize(y) for x, y in fields)
 
 
-def similarity(a: Track, b: Track) -> float:
+def _similarity_parts(a: Track, b: Track) -> tuple[float, float, float, float, float]:
     title_score = SequenceMatcher(None, normalize(a.display_title), normalize(b.display_title)).ratio()
     name_score = SequenceMatcher(None, normalize(a.path.stem), normalize(b.path.stem)).ratio()
     artist_score = SequenceMatcher(None, normalize(a.artist), normalize(b.artist)).ratio() if a.artist or b.artist else 1.0
     album_score = SequenceMatcher(None, normalize(a.album), normalize(b.album)).ratio() if a.album or b.album else 1.0
     duration_score = 1.0 if _same_duration(a, b) else 0.0
+    return title_score, name_score, artist_score, album_score, duration_score
+
+
+def similarity(a: Track, b: Track) -> float:
+    title_score, name_score, artist_score, album_score, duration_score = _similarity_parts(a, b)
     return 0.45 * title_score + 0.15 * name_score + 0.20 * artist_score + 0.10 * album_score + 0.10 * duration_score
 
 
+def _metadata_reasons() -> tuple[str, ...]:
+    return ("Normalized metadata key matches (artist, title/filename, album)",)
+
+
+def _filename_reasons(a: Track, b: Track) -> tuple[str, ...]:
+    reasons = ["Filename stem matches after normalization"]
+    delta = abs(a.duration - b.duration) if a.duration is not None and b.duration is not None else None
+    if delta is not None and delta <= 2.0:
+        reasons.append(f"Duration within 2.0s tolerance (difference: {delta:.2f}s)")
+    if normalize(a.artist) == normalize(b.artist):
+        reasons.append("Artist key matches after normalization")
+    return tuple(reasons)
+
+
+def _fuzzy_reasons(a: Track, b: Track, confidence: float) -> tuple[str, ...]:
+    title_score, name_score, artist_score, album_score, _duration_score = _similarity_parts(a, b)
+    reasons = [
+        f"Conservative fuzzy similarity: {confidence:.0%}",
+        f"Title similarity: {title_score:.0%}",
+        f"Filename similarity: {name_score:.0%}",
+        f"Artist similarity: {artist_score:.0%}",
+        f"Album similarity: {album_score:.0%}",
+    ]
+    if a.duration is not None and b.duration is not None:
+        delta = abs(a.duration - b.duration)
+        if delta <= 2.0:
+            reasons.append(f"Duration within 2.0s tolerance (difference: {delta:.2f}s)")
+        else:
+            reasons.append(f"Duration difference: {delta:.2f}s")
+    else:
+        reasons.append("Duration unavailable (no duration contribution)")
+    return tuple(reasons)
+
+
+def _observed_reasons(a: Track, b: Track) -> tuple[str, ...]:
+    if a.file_hash and b.file_hash and a.file_hash == b.file_hash:
+        return ("Byte-identical SHA-256",)
+    title_score = SequenceMatcher(None, normalize(a.display_title), normalize(b.display_title)).ratio()
+    artist_score = SequenceMatcher(None, normalize(a.artist), normalize(b.artist)).ratio() if a.artist or b.artist else 1.0
+    reasons = [f"Title similarity: {title_score:.0%}", f"Artist similarity: {artist_score:.0%}"]
+    if a.duration is not None and b.duration is not None:
+        reasons.append(f"Duration difference: {abs(a.duration - b.duration):.2f}s")
+    name_score = SequenceMatcher(None, normalize(a.path.stem), normalize(b.path.stem)).ratio()
+    if name_score >= 0.8:
+        reasons.append(f"Filename similarity: {name_score:.0%}")
+    return tuple(reasons)
+
+
+def _match_reasons(a: Track, b: Track, kind: str, confidence: float) -> tuple[str, ...]:
+    if kind == "hash" and a.file_hash and b.file_hash and a.file_hash == b.file_hash:
+        return ("Byte-identical SHA-256",)
+    if kind == "metadata" and track_key(a) == track_key(b):
+        return _metadata_reasons()
+    if kind == "filename" and normalize(a.path.stem) == normalize(b.path.stem) and (_same_duration(a, b) or normalize(a.artist) == normalize(b.artist)):
+        return _filename_reasons(a, b)
+    if kind == "fuzzy":
+        return _fuzzy_reasons(a, b, confidence)
+    return _observed_reasons(a, b)
+
+
 def _make_match(a: Track, b: Track, confidence: float, confirmed: bool, kind: str) -> Match:
-    return Match(a, b, confidence, _metadata_conflict(a, b), _artwork_conflict(a, b), confirmed, kind)
+    return Match(
+        a,
+        b,
+        confidence,
+        metadata_conflict=_metadata_conflict(a, b),
+        artwork_conflict=_artwork_conflict(a, b),
+        confirmed=confirmed,
+        match_kind=kind,
+        reasons=_match_reasons(a, b, kind, confidence),
+    )
 
 
 def _relative_track_path(track: Track, root) -> str:

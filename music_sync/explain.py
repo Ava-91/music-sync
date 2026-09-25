@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 
-from .matcher import normalize
-from .models import Match, Track
+from .matcher import _artwork_values, _match_reasons, normalize
+from .models import Match
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,29 +16,24 @@ class MatchExplanation:
     conflicts: tuple[str, ...]
 
 
-def _artwork_values(track: Track) -> tuple[str, ...]:
-    """Same representation the matcher uses for artwork comparison."""
-    return track.artwork_hashes or ((track.artwork_hash,) if track.artwork_hash else ())
+def _identity(match: Match) -> str:
+    if not match.confirmed:
+        return "Fuzzy match — review required"
+    if match.match_kind == "hash":
+        return "Exact match"
+    if match.match_kind == "metadata":
+        return "Confirmed metadata match"
+    if match.match_kind == "filename":
+        return "Confirmed filename match"
+    if match.match_kind == "fuzzy":
+        return "Confirmed fuzzy match"
+    return "Exact match" if match.confidence >= 1.0 else "Confirmed match"
 
 
 def explain_match(match: Match) -> MatchExplanation:
     left, right = match.library_a, match.library_b
-    reasons: list[str] = []
+    reasons = tuple(match.reasons) or _match_reasons(left, right, match.match_kind, match.confidence)
     conflicts: list[str] = []
-
-    if left.file_hash and right.file_hash and left.file_hash == right.file_hash:
-        reasons.append("Byte-identical SHA-256")
-    else:
-        title_score = SequenceMatcher(None, normalize(left.display_title), normalize(right.display_title)).ratio()
-        artist_score = SequenceMatcher(None, normalize(left.artist), normalize(right.artist)).ratio() if left.artist or right.artist else 1.0
-        reasons.append(f"Title similarity: {title_score:.0%}")
-        reasons.append(f"Artist similarity: {artist_score:.0%}")
-        if left.duration is not None and right.duration is not None:
-            delta = abs(left.duration - right.duration)
-            reasons.append(f"Duration difference: {delta:.2f}s")
-        name_score = SequenceMatcher(None, normalize(left.path.stem), normalize(right.path.stem)).ratio()
-        if name_score >= 0.8:
-            reasons.append(f"Filename similarity: {name_score:.0%}")
 
     for label, a, b in (("Title", left.title, right.title), ("Artist", left.artist, right.artist), ("Album", left.album, right.album)):
         if a and b and normalize(a) != normalize(b):
@@ -54,5 +48,4 @@ def explain_match(match: Match) -> MatchExplanation:
         else:
             conflicts.append("Library A is missing embedded artwork")
 
-    identity = "Exact match" if match.confirmed and match.confidence >= 1.0 else "Confirmed match" if match.confirmed else "Fuzzy match — review required"
-    return MatchExplanation(match.confidence, identity, tuple(reasons), tuple(conflicts))
+    return MatchExplanation(match.confidence, _identity(match), reasons, tuple(conflicts))
