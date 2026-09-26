@@ -87,6 +87,8 @@ A **dry run** can be used to preview the planned changes before anything is appl
 
 ### 🔍 Matching and review
 
+See [matching and match explanations](docs/matching.md) for the matching order, fuzzy evidence, ambiguity rules, and conflict explanations.
+
 The matching engine combines multiple signals:
 
 - artist, title, and album metadata
