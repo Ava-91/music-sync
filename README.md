@@ -42,6 +42,10 @@ It is built around a simple idea: **make synchronization decisions visible befor
 - [Repository hygiene](#repository-hygiene)
 - [License](#license)
 
+## 🚀 New here?
+
+Start with the **[Getting started guide](docs/getting-started.md)** for a beginner-friendly Windows walkthrough from installation through your first dry run.
+
 ## How it works
 
 Harmelune treats synchronization as a **reviewable plan**, not an immediate file operation.
