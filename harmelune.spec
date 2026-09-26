@@ -24,7 +24,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="music-sync",
+    name="harmelune",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
