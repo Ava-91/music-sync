@@ -30,7 +30,7 @@ def _stats(root: Path) -> tuple[int, int]:
 
 
 def list_backups(backup_root: Path) -> list[BackupInfo]:
-    """List valid music-sync backup directories, newest first."""
+    """List valid Harmelune backup directories, newest first."""
     if not backup_root.is_dir():
         return []
     backups: list[BackupInfo] = []
