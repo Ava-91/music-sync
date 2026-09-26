@@ -46,6 +46,16 @@ It is built around a simple idea: **make synchronization decisions visible befor
 
 Start with the **[Getting started guide](docs/getting-started.md)** for a beginner-friendly Windows walkthrough from installation through your first dry run.
 
+## 📚 Documentation
+
+- [Getting started](docs/getting-started.md) — from installation to your first dry run
+- [Synchronization workflow](docs/synchronization-workflow.md) — what happens from scan to verification
+- [Matching and match explanations](docs/matching.md) — how matches are built and explained
+- [Safety, backups, and recovery](docs/safety-and-recovery.md) — what is protected and how recovery works
+- [Troubleshooting and FAQ](docs/troubleshooting.md) — common problems and practical diagnostics
+- [Architecture and contributor workflow](docs/architecture.md) — repository structure, tests, CI, and contribution flow
+- [Documentation roadmap](docs/roadmap.md) — documentation coverage and maintenance rules
+
 ## How it works
 
 Harmelune treats synchronization as a **reviewable plan**, not an immediate file operation.
