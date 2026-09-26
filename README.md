@@ -40,6 +40,7 @@ It is built around a simple idea: **make synchronization decisions visible befor
 - [Development](#development)
 - [Validation status](#validation-status)
 - [Repository hygiene](#repository-hygiene)
+- [Contributing and security](#contributing-and-security)
 - [License](#license)
 
 ## 🚀 New here?
@@ -421,6 +422,14 @@ Do not commit:
 - generated build/distribution artifacts
 
 Use disposable temporary directories for filesystem integration tests.
+
+## Contributing and security
+
+- [Contributing guide](CONTRIBUTING.md) — development workflow and pull request expectations
+- [Security policy](SECURITY.md) — how to report security vulnerabilities privately
+- [Changelog](CHANGELOG.md) — user-facing maintenance and release history
+
+When reporting a bug, use the repository's **Bug report** issue template. For ideas and improvements, use the **Feature request** template.
 
 ## Project status
 
