@@ -332,6 +332,8 @@ Remember that an automated startup smoke test does not cover the complete intera
 
 ## Development
 
+See the [project architecture and contributor workflow](docs/architecture.md) for module responsibilities, test layout, CI, packaging, and contribution guidance.
+
 The repository is organized around a small application layer and the `harmelune/` package.
 
 Major areas include:
