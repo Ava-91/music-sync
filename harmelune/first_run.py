@@ -50,7 +50,7 @@ def is_first_run(settings: Settings) -> bool:
 class FirstRunWizard(tk.Toplevel):
     def __init__(self, parent: tk.Misc, initial: Settings) -> None:
         super().__init__(parent)
-        self.title("music-sync setup")
+        self.title("Harmelune setup")
         self.geometry("700x520")
         self.minsize(620, 460)
         self.transient(parent)
@@ -109,7 +109,7 @@ class FirstRunWizard(tk.Toplevel):
     def _show_step(self) -> None:
         self._clear()
         steps = [
-            ("Welcome to music-sync", "Set up two independent music libraries. Nothing is scanned, copied, deleted, or backed up by this wizard."),
+            ("Welcome to Harmelune", "Set up two independent music libraries. Nothing is scanned, copied, deleted, or backed up by this wizard."),
             ("1. Select Library A", "Choose the first music folder. It can be anywhere on this Windows machine or an accessible drive."),
             ("2. Select Library B", "Choose a different music folder. Identical or nested libraries are rejected for safety."),
             ("3. Choose the master", "The master is the authoritative library when a directed operation needs one. There is no hidden laptop/phone preference."),
