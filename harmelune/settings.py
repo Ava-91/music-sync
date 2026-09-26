@@ -8,7 +8,9 @@ from pathlib import Path
 
 from .models import SyncMode
 
-PORTABLE_MARKER = ".music-sync-portable"
+
+PORTABLE_MARKER = ".harmelune-portable"
+LEGACY_PORTABLE_MARKER = ".music-sync-portable"
 
 
 @dataclass(slots=True)
@@ -37,19 +39,35 @@ class SettingsStore:
     """Persist user configuration separately from music libraries."""
 
     def __init__(self, config_dir: str | Path | None = None) -> None:
-        self.config_dir = Path(config_dir) if config_dir is not None else default_config_dir()
+        self._uses_default_config = config_dir is None
+        self.config_dir = (
+            Path(config_dir) if config_dir is not None else default_config_dir()
+        )
         self.path = self.config_dir / "settings.json"
 
     def load(self) -> Settings:
-        if not self.path.is_file():
-            return Settings()
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-            settings = Settings(**payload)
-            settings.validate()
-            return settings
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            return Settings()
+        paths = [self.path]
+
+        if (
+            self._uses_default_config
+            and not is_portable_mode()
+            and not self.path.is_file()
+        ):
+            paths.append(legacy_config_dir() / "settings.json")
+
+        for path in paths:
+            if not path.is_file():
+                continue
+
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                settings = Settings(**payload)
+                settings.validate()
+                return settings
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                continue
+
+        return Settings()
 
     def save(self, settings: Settings) -> Path:
         settings.validate()
@@ -79,17 +97,38 @@ def portable_config_dir(application_path: str | Path | None = None) -> Path:
 
 def is_portable_mode(application_path: str | Path | None = None) -> bool:
     """Portable mode is opt-in through a marker beside the application."""
-    return (application_directory(application_path) / PORTABLE_MARKER).is_file()
+    application = application_directory(application_path)
+    return any(
+        (application / marker).is_file()
+        for marker in (PORTABLE_MARKER, LEGACY_PORTABLE_MARKER)
+    )
 
 
 def default_config_dir() -> Path:
     if is_portable_mode():
         return portable_config_dir()
+
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "Harmelune"
+
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "harmelune"
+
+    return Path.home() / ".config" / "harmelune"
+
+
+def legacy_config_dir() -> Path:
+    """Return the pre-Harmelune configuration directory."""
     if os.name == "nt":
         appdata = os.environ.get("APPDATA")
         if appdata:
             return Path(appdata) / "music-sync"
+
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:
         return Path(xdg) / "music-sync"
+
     return Path.home() / ".config" / "music-sync"
