@@ -73,6 +73,8 @@ You choose which library is the master/source and which synchronization mode sho
 
 ### 🎼 Library synchronization
 
+See the detailed [synchronization workflow](docs/synchronization-workflow.md) for the scan → match → review → dry-run → backup → apply sequence.
+
 Harmelune supports three primary apply modes:
 
 | Mode | Purpose |
