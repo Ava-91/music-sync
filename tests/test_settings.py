@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from music_sync.settings import Settings, SettingsStore
+from harmelune.settings import Settings, SettingsStore
 
 
 def test_defaults_contain_no_library_paths():
