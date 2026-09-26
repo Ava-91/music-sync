@@ -108,10 +108,9 @@ def default_config_dir() -> Path:
     if is_portable_mode():
         return portable_config_dir()
 
-    if os.name == "nt":
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            return Path(appdata) / "Harmelune"
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "Harmelune"
 
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:
@@ -122,10 +121,9 @@ def default_config_dir() -> Path:
 
 def legacy_config_dir() -> Path:
     """Return the pre-Harmelune configuration directory."""
-    if os.name == "nt":
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            return Path(appdata) / "music-sync"
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "music-sync"
 
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:
