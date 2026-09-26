@@ -292,6 +292,8 @@ The health dashboard can summarize information such as:
 
 ## Troubleshooting
 
+For a fuller decision tree and FAQ, see [Troubleshooting and FAQ](docs/troubleshooting.md).
+
 ### The application asks for libraries again
 
 This is expected on an unconfigured or newly portable installation.
