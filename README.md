@@ -1,6 +1,7 @@
-# music-sync
+# Harmelune
 
-`music-sync` is a local music-library reconciliation and synchronization tool. It compares two independently maintained folders as **Library A** and **Library B**, lets you choose which library is authoritative, reviews ambiguous matches and conflicts, previews changes, creates verified backups, and applies a selected synchronization mode.
+
+`Harmelune` is a local music-library reconciliation and synchronization tool. It compares two independently maintained folders as **Library A** and **Library B**, lets you choose which library is authoritative, reviews ambiguous matches and conflicts, previews changes, creates verified backups, and applies a selected synchronization mode.
 
 The product is intentionally generic: Library A and Library B can be ordinary local folders from different computers, removable storage, exports, backups, or other sources accessible to the application. It does not require a laptop/phone pairing.
 
@@ -116,7 +117,7 @@ run.bat
 
 ### Windows executable
 
-The repository contains a PyInstaller specification in `music_sync.spec` and a Windows version-resource file in `build/windows_version.txt`. The packaged application is built as a one-file executable named `music-sync.exe`.
+The repository contains a PyInstaller specification in `harmelune.spec` and a Windows version-resource file in `build/windows_version.txt`. The packaged application is built as a one-file executable named `harmelune.exe`.
 
 The Windows GitHub Actions workflow builds the executable, verifies its version metadata and startup behavior, and uploads the resulting artifact. These automated checks are not a substitute for a complete interactive Windows GUI test; see **Validation status** below.
 
@@ -174,7 +175,7 @@ Use the packaged artifact produced by the Windows build workflow and verify its 
 
 ## Development
 
-The repository is organized around a small application layer and a `music_sync/` package containing scanning, matching, review, dry-run, execution, backup/restore, reporting, health, settings, and safety modules.
+The repository is organized around a small application layer and a `harmelune/` package containing scanning, matching, review, dry-run, execution, backup/restore, reporting, health, settings, and safety modules.
 
 Runtime dependencies are in `requirements.txt`. Development/test dependencies are in `requirements-dev.txt`.
 
@@ -194,7 +195,7 @@ The release validation distinguishes implementation from real-world verification
 
 - **Ubuntu CI:** automated pytest runs are used for the supported test workflow.
 - **Windows CI:** automated pytest runs are used for the Windows test workflow.
-- **Windows EXE:** the packaging workflow builds `music-sync.exe`, verifies version metadata, and performs an automated startup smoke test.
+- **Windows EXE:** the packaging workflow builds `harmelune.exe`, verifies version metadata, and performs an automated startup smoke test.
 - **Interactive Windows GUI:** the automated build/startup workflow does **not** prove the complete human GUI workflow. Full interactive validation must be performed in an actual interactive Windows environment before treating that release-gate item as verified.
 - **Disposable realistic-library validation:** a real end-to-end test with temporary libraries should be treated separately from unit/contract tests.
 
