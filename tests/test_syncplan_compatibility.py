@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from music_sync.models import FileState, Match, SyncPlan, Track
+from harmelune.models import FileState, Match, SyncPlan, Track
 
 
 def _match() -> Match:

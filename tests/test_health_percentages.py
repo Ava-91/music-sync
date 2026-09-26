@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from music_sync.health import build_health_report
-from music_sync.models import ScanResult, Track
+from harmelune.health import build_health_report
+from harmelune.models import ScanResult, Track
 
 
 def test_health_percentage_uses_stable_integer_first_arithmetic():

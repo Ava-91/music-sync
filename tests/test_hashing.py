@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from music_sync.hashing import sha256_file
+from harmelune.hashing import sha256_file
 
 
 def test_sha256_is_stable(tmp_path: Path):

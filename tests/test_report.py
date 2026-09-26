@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from music_sync.report import make_report, save_json
+from harmelune.report import make_report, save_json
 
 
 def test_report_round_trips_to_json(tmp_path: Path):

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.path_safety import validate_backup_root, validate_library_pair
+from harmelune.path_safety import validate_backup_root, validate_library_pair
 
 
 def test_valid_unicode_and_space_paths_are_accepted(tmp_path: Path):

@@ -1,5 +1,5 @@
-from music_sync.models import Track
-from music_sync.matcher import _artwork_conflict
+from harmelune.models import Track
+from harmelune.matcher import _artwork_conflict
 
 
 def test_missing_artwork_is_a_conflict():

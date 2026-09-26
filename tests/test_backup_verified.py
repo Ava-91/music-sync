@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.backup import BackupVerificationError, create_verified_backup, verify_backup
-from music_sync.direction import MasterLibrary, SyncDirection
-from music_sync.models import SyncPlan, Track
-from music_sync.scanner import current_fingerprint
-from music_sync.sync import execute_safe
+from harmelune.backup import BackupVerificationError, create_verified_backup, verify_backup
+from harmelune.direction import MasterLibrary, SyncDirection
+from harmelune.models import SyncPlan, Track
+from harmelune.scanner import current_fingerprint
+from harmelune.sync import execute_safe
 
 
 def test_verified_backup_success_with_unicode_and_nested_files(tmp_path: Path):
@@ -86,7 +86,7 @@ def test_backup_verification_failure_blocks_safe_execution(tmp_path: Path, monke
     def fail_backup(*args, **kwargs):
         raise BackupVerificationError("simulated verification failure")
 
-    monkeypatch.setattr("music_sync.sync.create_verified_backup", fail_backup)
+    monkeypatch.setattr("harmelune.sync.create_verified_backup", fail_backup)
     with pytest.raises(BackupVerificationError):
         execute_safe(plan, SyncDirection(source, destination, MasterLibrary.LIBRARY_A), backup_root)
 

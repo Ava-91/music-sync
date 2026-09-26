@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.backup import (
+from harmelune.backup import (
     RestoreConfirmationError,
     create_verified_backup,
     restore_verified_backup,
@@ -66,7 +66,7 @@ def test_restore_failure_recovers_current_library(tmp_path: Path, monkeypatch):
     target.mkdir()
     (target / "current.mp3").write_bytes(b"current")
 
-    import music_sync.backup as backup_module
+    import harmelune.backup as backup_module
     original_restore = backup_module._restore_directory
     calls = {"count": 0}
 
@@ -94,7 +94,7 @@ def test_restore_recovery_failure_is_reported(tmp_path: Path, monkeypatch):
     target.mkdir()
     (target / "current.mp3").write_bytes(b"current")
 
-    monkeypatch.setattr("music_sync.backup._restore_directory", lambda *_: (_ for _ in ()).throw(OSError("restore failed")))
+    monkeypatch.setattr("harmelune.backup._restore_directory", lambda *_: (_ for _ in ()).throw(OSError("restore failed")))
     result = restore_verified_backup(backup, target, tmp_path / "Safety", "RESTORE")
 
     assert result.restored is False

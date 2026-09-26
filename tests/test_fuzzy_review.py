@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.direction import MasterLibrary, SyncDirection
-from music_sync.fuzzy_ui import apply_fuzzy_decisions
-from music_sync.mirror import MirrorAction, build_mirror_preview, execute_mirror
-from music_sync.models import Match, SyncPlan, Track
-from music_sync.scanner import current_fingerprint
+from harmelune.direction import MasterLibrary, SyncDirection
+from harmelune.fuzzy_ui import apply_fuzzy_decisions
+from harmelune.mirror import MirrorAction, build_mirror_preview, execute_mirror
+from harmelune.models import Match, SyncPlan, Track
+from harmelune.scanner import current_fingerprint
 
 
 def make_track(name: str, side: str, root: Path | None = None) -> Track:

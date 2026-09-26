@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.direction import MasterLibrary, SyncDirection
-from music_sync.mirror import MirrorAction, MirrorConfirmationError, build_mirror_preview, execute_mirror
-from music_sync.models import Match, SyncPlan, Track
-from music_sync.scanner import current_fingerprint
+from harmelune.direction import MasterLibrary, SyncDirection
+from harmelune.mirror import MirrorAction, MirrorConfirmationError, build_mirror_preview, execute_mirror
+from harmelune.models import Match, SyncPlan, Track
+from harmelune.scanner import current_fingerprint
 
 
 def fresh_plan(a: Path, b: Path, **kwargs) -> SyncPlan:

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from music_sync.dry_run import summarize
-from music_sync.models import Match, SyncPlan, Track
+from harmelune.dry_run import summarize
+from harmelune.models import Match, SyncPlan, Track
 
 
 def test_dry_run_is_read_only_and_counts_changes():

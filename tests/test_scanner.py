@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from music_sync.scanner import current_fingerprint
+from harmelune.scanner import current_fingerprint
 
 
 def test_current_fingerprint_supports_unicode_and_spaces(tmp_path: Path):

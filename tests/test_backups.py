@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from music_sync.backups import list_backups, restore_backup
+from harmelune.backups import list_backups, restore_backup
 
 
 def test_list_backups_reads_timestamped_directories(tmp_path: Path):

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from music_sync.explain import explain_match
-from music_sync.matcher import build_plan
-from music_sync.models import Match, ScanResult, Track
+from harmelune.explain import explain_match
+from harmelune.matcher import build_plan
+from harmelune.models import Match, ScanResult, Track
 
 
 def test_exact_hash_is_explained():

@@ -1,9 +1,9 @@
 from pathlib import Path
 import wave
 
-from music_sync.matcher import build_plan, normalize
-from music_sync.models import ScanResult, Track
-from music_sync.scanner import scan_library
+from harmelune.matcher import build_plan, normalize
+from harmelune.models import ScanResult, Track
+from harmelune.scanner import scan_library
 
 
 def test_empty_library_scan_has_no_tracks_or_errors(tmp_path: Path):
@@ -60,7 +60,7 @@ def test_scan_reports_file_read_failure_without_stopping_other_files(tmp_path: P
         handle.setframerate(8000)
         handle.writeframes(b"\x00\x00")
 
-    from music_sync import scanner
+    from harmelune import scanner
 
     original = scanner.sha256_file
 

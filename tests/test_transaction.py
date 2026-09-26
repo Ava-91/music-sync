@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.backup import create_verified_backup
-from music_sync.transaction import FileOperation, OperationKind, execute_transaction
+from harmelune.backup import create_verified_backup
+from harmelune.transaction import FileOperation, OperationKind, execute_transaction
 
 
 def make_backup(root: Path, tmp_path: Path):
@@ -40,7 +40,7 @@ def test_mid_operation_failure_rolls_back_everything(tmp_path: Path, monkeypatch
     source = tmp_path / "source.txt"
     source.write_text("replacement")
 
-    original_copy2 = __import__("music_sync.transaction", fromlist=["shutil"]).shutil.copy2
+    original_copy2 = __import__("harmelune.transaction", fromlist=["shutil"]).shutil.copy2
     calls = {"count": 0}
 
     def fail_second_copy(source_path, destination_path):
@@ -49,7 +49,7 @@ def test_mid_operation_failure_rolls_back_everything(tmp_path: Path, monkeypatch
             raise OSError("simulated copy failure")
         return original_copy2(source_path, destination_path)
 
-    monkeypatch.setattr("music_sync.transaction.shutil.copy2", fail_second_copy)
+    monkeypatch.setattr("harmelune.transaction.shutil.copy2", fail_second_copy)
     operations = [
         FileOperation(OperationKind.REPLACE, source, library / "keep.txt"),
         FileOperation(OperationKind.COPY, source, library / "new.txt"),
@@ -75,7 +75,7 @@ def test_two_library_transaction_rolls_back_both_libraries(tmp_path: Path, monke
     source = tmp_path / "source.txt"
     source.write_text("changed")
 
-    original_copy2 = __import__("music_sync.transaction", fromlist=["shutil"]).shutil.copy2
+    original_copy2 = __import__("harmelune.transaction", fromlist=["shutil"]).shutil.copy2
     calls = {"count": 0}
 
     def fail_second(source_path, destination_path):
@@ -84,7 +84,7 @@ def test_two_library_transaction_rolls_back_both_libraries(tmp_path: Path, monke
             raise OSError("simulated second-library failure")
         return original_copy2(source_path, destination_path)
 
-    monkeypatch.setattr("music_sync.transaction.shutil.copy2", fail_second)
+    monkeypatch.setattr("harmelune.transaction.shutil.copy2", fail_second)
     operations = [
         FileOperation(OperationKind.REPLACE, source, library_a / "a.txt"),
         FileOperation(OperationKind.REPLACE, source, library_b / "b.txt"),
@@ -105,9 +105,9 @@ def test_rollback_failure_is_reported(tmp_path: Path, monkeypatch):
     source = tmp_path / "source.txt"
     source.write_text("changed")
 
-    monkeypatch.setattr("music_sync.transaction._restore_from_backup", lambda *_: (_ for _ in ()).throw(OSError("rollback failed")))
+    monkeypatch.setattr("harmelune.transaction._restore_from_backup", lambda *_: (_ for _ in ()).throw(OSError("rollback failed")))
     operations = [FileOperation(OperationKind.REPLACE, source, library / "file.txt")]
-    monkeypatch.setattr("music_sync.transaction.shutil.copy2", lambda *_: (_ for _ in ()).throw(OSError("copy failed")))
+    monkeypatch.setattr("harmelune.transaction.shutil.copy2", lambda *_: (_ for _ in ()).throw(OSError("copy failed")))
 
     result = execute_transaction(operations, {library: backup})
 

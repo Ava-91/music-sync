@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.direction import MasterLibrary, SyncDirection
-from music_sync.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
-from music_sync.freshness import StalePlanError
-from music_sync.mirror import MirrorAction
-from music_sync.models import Match, SyncPlan, Track
-from music_sync.reconcile import ReconcileDecision
-from music_sync.scanner import current_fingerprint
+from harmelune.direction import MasterLibrary, SyncDirection
+from harmelune.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
+from harmelune.freshness import StalePlanError
+from harmelune.mirror import MirrorAction
+from harmelune.models import Match, SyncPlan, Track
+from harmelune.reconcile import ReconcileDecision
+from harmelune.scanner import current_fingerprint
 
 
 def fresh_plan(a: Path, b: Path, **kwargs) -> SyncPlan:
