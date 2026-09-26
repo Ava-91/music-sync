@@ -4,9 +4,9 @@ import shutil
 
 import pytest
 
-from music_sync.freshness import StalePlanError, validate_plan_freshness
-from music_sync.models import SyncPlan
-from music_sync.scanner import current_fingerprint
+from harmelune.freshness import StalePlanError, validate_plan_freshness
+from harmelune.models import SyncPlan
+from harmelune.scanner import current_fingerprint
 
 
 def make_plan(a: Path, b: Path) -> SyncPlan:

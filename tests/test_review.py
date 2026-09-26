@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from music_sync.models import Match, Track
-from music_sync.review import ConflictChoice, apply_choices, conflict_matches
+from harmelune.models import Match, Track
+from harmelune.review import ConflictChoice, apply_choices, conflict_matches
 
 
 def track(path: str, side: str, *, title: str = "Song", artwork: str | None = None) -> Track:

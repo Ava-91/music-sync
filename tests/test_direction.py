@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.direction import MasterLibrary, select_master
+from harmelune.direction import MasterLibrary, select_master
 
 
 def test_library_a_is_explicit_master():

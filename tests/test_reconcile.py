@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from music_sync.models import Match, SyncPlan, Track
-from music_sync.reconcile import ReconcileDecision, execute_reconcile
-from music_sync.scanner import current_fingerprint
+from harmelune.models import Match, SyncPlan, Track
+from harmelune.reconcile import ReconcileDecision, execute_reconcile
+from harmelune.scanner import current_fingerprint
 
 
 def fresh_plan(a: Path, b: Path, **kwargs) -> SyncPlan:

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from music_sync.health import build_health_report
-from music_sync.models import Match, ScanResult, SyncPlan, Track
+from harmelune.health import build_health_report
+from harmelune.models import Match, ScanResult, SyncPlan, Track
 
 
 def scan(side: str, *tracks: Track, errors: list[str] | None = None) -> ScanResult:

@@ -18,7 +18,7 @@ def _format_size(value: int) -> str:
 
 
 class BackupManagerDialog(tk.Toplevel):
-    """Browse and safely restore music-sync backups."""
+    """Browse and safely restore Harmelune backups."""
 
     def __init__(self, parent: tk.Misc, target: Path, backup_root: Path) -> None:
         super().__init__(parent)

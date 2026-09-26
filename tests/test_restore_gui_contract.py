@@ -12,7 +12,7 @@ def test_main_gui_exposes_backup_manager_actions_without_personal_defaults():
 
 
 def test_backup_dialog_reports_success_to_the_caller():
-    source = Path("music_sync/backup_ui.py").read_text(encoding="utf-8")
+    source = Path("harmelune/backup_ui.py").read_text(encoding="utf-8")
     assert "self.restored = False" in source
     assert "self.restored = True" in source
     assert "return dialog" in source

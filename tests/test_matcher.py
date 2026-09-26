@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from music_sync.matcher import build_plan
-from music_sync.models import ScanResult, Track
+from harmelune.matcher import build_plan
+from harmelune.models import ScanResult, Track
 
 
 def track(side: str, name: str, title: str, artist: str = "Billie Eilish", album: str = "Album") -> Track:

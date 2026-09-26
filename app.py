@@ -5,28 +5,28 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from music_sync.backup_ui import open_backup_manager
-from music_sync.direction import MasterLibrary, SyncDirection
-from music_sync.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
-from music_sync.execution_report import ExecutionReport, report_from_mirror, report_from_reconcile, report_from_safe
-from music_sync.first_run import FirstRunWizard, is_first_run
-from music_sync.fuzzy_ui import apply_fuzzy_decisions, review_fuzzy_matches
-from music_sync.health import build_health_report
-from music_sync.matcher import build_plan
-from music_sync.models import SyncMode, SyncPlan
-from music_sync.mirror import build_mirror_preview, execute_mirror
-from music_sync.path_safety import validate_backup_root, validate_library_pair
-from music_sync.reconcile import ReconcileDecision, execute_reconcile
-from music_sync.review import ConflictChoice
-from music_sync.scanner import scan_library
-from music_sync.settings import Settings, SettingsStore
-from music_sync.sync import execute_safe
+from harmelune.backup_ui import open_backup_manager
+from harmelune.direction import MasterLibrary, SyncDirection
+from harmelune.dry_run import dry_run_mirror, dry_run_reconcile, dry_run_safe
+from harmelune.execution_report import ExecutionReport, report_from_mirror, report_from_reconcile, report_from_safe
+from harmelune.first_run import FirstRunWizard, is_first_run
+from harmelune.fuzzy_ui import apply_fuzzy_decisions, review_fuzzy_matches
+from harmelune.health import build_health_report
+from harmelune.matcher import build_plan
+from harmelune.models import SyncMode, SyncPlan
+from harmelune.mirror import build_mirror_preview, execute_mirror
+from harmelune.path_safety import validate_backup_root, validate_library_pair
+from harmelune.reconcile import ReconcileDecision, execute_reconcile
+from harmelune.review import ConflictChoice
+from harmelune.scanner import scan_library
+from harmelune.settings import Settings, SettingsStore
+from harmelune.sync import execute_safe
 
 
-class MusicSyncApp(tk.Tk):
+class HarmeluneApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("music-sync")
+        self.title("Harmelune")
         self.geometry("1180x820")
         self.minsize(940, 660)
         self.settings_store = SettingsStore()
@@ -72,7 +72,7 @@ class MusicSyncApp(tk.Tk):
     def _build_ui(self) -> None:
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="music-sync", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        ttk.Label(frame, text="Harmelune", font=("Segoe UI", 20, "bold")).pack(anchor="w")
         ttk.Label(frame, text="Compare, review, preview, and synchronize two arbitrary music libraries.").pack(anchor="w", pady=(2, 18))
         self._path_row(frame, "Library A", self.library_a_var)
         self._path_row(frame, "Library B", self.library_b_var)
@@ -270,7 +270,7 @@ class MusicSyncApp(tk.Tk):
     def review_conflicts(self) -> None:
         if not self.plan:
             return
-        from music_sync.conflict_ui import review_conflicts
+        from harmelune.conflict_ui import review_conflicts
         conflicts = [m for m in self.plan.matches if m.metadata_conflict or m.artwork_conflict]
         choices = review_conflicts(self, conflicts)
         if choices is not None:
@@ -400,11 +400,11 @@ class MusicSyncApp(tk.Tk):
     def export_report(self) -> None:
         if not self.last_report:
             return
-        destination = filedialog.asksaveasfilename(title="Export execution report", defaultextension=".json", filetypes=[("JSON report", "*.json")], initialfile="music-sync-execution-report.json")
+        destination = filedialog.asksaveasfilename(title="Export execution report", defaultextension=".json", filetypes=[("JSON report", "*.json")], initialfile="harmelune-execution-report.json")
         if destination:
             path = self.last_report.save_json(Path(destination))
             self.status_var.set(f"Report exported to {path}")
 
 
 if __name__ == "__main__":
-    MusicSyncApp().mainloop()
+    HarmeluneApp().mainloop()

@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from music_sync.first_run import FirstRunState, is_first_run
-from music_sync.models import SyncMode
-from music_sync.settings import Settings
+from harmelune.first_run import FirstRunState, is_first_run
+from harmelune.models import SyncMode
+from harmelune.settings import Settings
 
 
 def test_empty_settings_are_first_run():

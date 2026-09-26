@@ -1,16 +1,16 @@
 from pathlib import Path
 
-from music_sync.execution_report import (
+from harmelune.execution_report import (
     ReportStatus,
     report_from_mirror,
     report_from_reconcile,
     report_from_safe,
     report_from_transaction,
 )
-from music_sync.mirror import MirrorResult
-from music_sync.reconcile import ReconcileResult
-from music_sync.sync import SafeExecutionResult
-from music_sync.transaction import FileOperation, OperationKind, TransactionResult
+from harmelune.mirror import MirrorResult
+from harmelune.reconcile import ReconcileResult
+from harmelune.sync import SafeExecutionResult
+from harmelune.transaction import FileOperation, OperationKind, TransactionResult
 
 
 def test_safe_report_records_actual_copy_and_backup():

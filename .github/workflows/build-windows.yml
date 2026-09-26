@@ -4,8 +4,8 @@ on:
   pull_request:
     paths:
       - "app.py"
-      - "music_sync/**"
-      - "music_sync.spec"
+      - "harmelune/**"
+      - "harmelune.spec"
       - "build/windows_version.txt"
       - "requirements*.txt"
       - ".github/workflows/build-windows.yml"
@@ -34,12 +34,12 @@ jobs:
         run: python -m pytest -q
 
       - name: Build Windows application
-        run: python -m PyInstaller --clean --noconfirm music_sync.spec
+        run: python -m PyInstaller --clean --noconfirm harmelune.spec
 
       - name: Verify executable exists and version metadata
         shell: pwsh
         run: |
-          $exe = "dist\music-sync.exe"
+          $exe = "dist\harmelune.exe"
           if (-not (Test-Path $exe -PathType Leaf)) {
             throw "Expected executable was not produced: $exe"
           }
@@ -53,14 +53,14 @@ jobs:
       - name: Smoke-test executable startup
         shell: pwsh
         run: |
-          $exe = (Resolve-Path "dist\music-sync.exe").Path
+          $exe = (Resolve-Path "dist\harmelune.exe").Path
           $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
           try {
             Start-Sleep -Seconds 5
             if ($process.HasExited) {
-              throw "music-sync.exe exited during startup with code $($process.ExitCode)."
+              throw "harmelune.exe exited during startup with code $($process.ExitCode)."
             }
-            Write-Host "music-sync.exe remained running for the startup smoke-test window."
+            Write-Host "harmelune.exe remained running for the startup smoke-test window."
           }
           finally {
             if (-not $process.HasExited) {
@@ -71,6 +71,6 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: music-sync-windows-${{ github.sha }}
-          path: dist/music-sync.exe
+          name: harmelune-windows-${{ github.sha }}
+          path: dist/harmelune.exe
           if-no-files-found: error

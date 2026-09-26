@@ -50,8 +50,9 @@ Music/
 *.wma
 
 # Local backups / sync state
-music-sync-backups/
 backups/
 backup/
 .sync/
 sync_data/
+
+harmelune-backups/

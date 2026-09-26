@@ -38,5 +38,5 @@ def test_no_audio_or_build_artifacts_are_tracked():
 
 def test_gitignore_covers_private_audio_and_local_state():
     gitignore = Path(".gitignore").read_text(encoding="utf-8")
-    for required in ("*.mp3", "*.flac", "music-sync-backups/", ".env", "dist/"):
+    for required in ("*.mp3", "*.flac", "harmelune-backups/", ".env", "dist/"):
         assert required in gitignore

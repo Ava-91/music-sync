@@ -1,5 +1,5 @@
-# UTF-8 Windows version resource for music-sync 1.0.0.
-# Keep the numeric version aligned with music_sync.__version__.
+# UTF-8 Windows version resource for Harmelune 1.0.0.
+# Keep the numeric version aligned with harmelune.__version__.
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(1, 0, 0, 0),
@@ -17,11 +17,11 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [StringStruct('CompanyName', 'Ava-91'),
-        StringStruct('FileDescription', 'music-sync music library synchronization tool'),
+        StringStruct('FileDescription', 'Harmelune music library synchronization tool'),
         StringStruct('FileVersion', '1.0.0.0'),
-        StringStruct('InternalName', 'music-sync'),
-        StringStruct('OriginalFilename', 'music-sync.exe'),
-        StringStruct('ProductName', 'music-sync'),
+        StringStruct('InternalName', 'harmelune'),
+        StringStruct('OriginalFilename', 'harmelune.exe'),
+        StringStruct('ProductName', 'Harmelune'),
         StringStruct('ProductVersion', '1.0.0.0')])
       ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

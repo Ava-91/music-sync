@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from music_sync.display import display_path
+from harmelune.display import display_path
 
 
 def test_display_path_uses_stable_posix_separators():
