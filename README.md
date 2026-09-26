@@ -121,6 +121,8 @@ Modifying a music library is high-impact, so Harmelune puts several checks aroun
 
 ## Backup and restore
 
+See the [safety, backups, and recovery guide](docs/safety-and-recovery.md) before trusting Harmelune with an important collection.
+
 The configured backup location is used for backup operations.
 
 The **Backup Manager** lets you:
