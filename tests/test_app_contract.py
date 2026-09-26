@@ -32,4 +32,4 @@ def test_app_uses_generic_v1_components():
 def test_app_module_imports_without_constructing_a_window():
     import app
 
-    assert hasattr(app, "MusicSyncApp")
+    assert hasattr(app, "HarmeluneApp")
